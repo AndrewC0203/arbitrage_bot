@@ -30,6 +30,9 @@ import unicodedata
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
+
+_ET = ZoneInfo("America/New_York")
 
 import aiohttp
 import requests
@@ -234,8 +237,8 @@ def _normalize(s: str) -> str:
 def _kalshi_game_dt_utc(ticker: str) -> Optional[datetime]:
     try:
         seg = ticker.split("-")[1]
-        dt_et = datetime.strptime(seg[:11], "%y%b%d%H%M")
-        return dt_et.replace(tzinfo=timezone.utc) + timedelta(hours=4)
+        dt_naive = datetime.strptime(seg[:11], "%y%b%d%H%M")
+        return dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc)
     except (IndexError, ValueError):
         return None
 
@@ -574,7 +577,7 @@ def match_markets(kalshi_markets: list[dict], polymarket_markets: list[dict]) ->
                 p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
                 continue
-            k_game_dt_utc = k_game_dt + timedelta(hours=4)
+            k_game_dt_utc = k_game_dt.replace(tzinfo=_ET).astimezone(timezone.utc)
             if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
                 continue
             poly_kteam_sides = [
