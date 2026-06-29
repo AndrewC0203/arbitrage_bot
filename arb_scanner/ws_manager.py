@@ -1613,17 +1613,15 @@ async def _poly_ws_task() -> None:
             ) as ws:
                 backoff = 1
 
-                # Subscribe in chunks using the correct SDK protocol
-                for i in range(0, len(all_slugs), _WS_SUBSCRIBE_CHUNK_SIZE):
-                    chunk = all_slugs[i: i + _WS_SUBSCRIBE_CHUNK_SIZE]
-                    req_id = f"mlb-{next(_req_counter)}"
-                    await ws.send(json.dumps({
-                        "subscribe": {
-                            "requestId": req_id,
-                            "subscriptionType": "SUBSCRIPTION_TYPE_MARKET_DATA_LITE",
-                            "marketSlugs": chunk,
-                        }
-                    }))
+                # Single subscribe to avoid "max subscriptions per connection" errors
+                req_id = f"poly-{next(_req_counter)}"
+                await ws.send(json.dumps({
+                    "subscribe": {
+                        "requestId": req_id,
+                        "subscriptionType": "SUBSCRIPTION_TYPE_MARKET_DATA_LITE",
+                        "marketSlugs": all_slugs,
+                    }
+                }))
 
                 print(
                     f"[POLY-WS] Connected — subscribed to {len(all_slugs)} slugs.",
