@@ -2,8 +2,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 import re
 import unicodedata
+from zoneinfo import ZoneInfo
 
 from matchers.base import BaseMatcher
+
+_ET = ZoneInfo("America/New_York")
 
 # ─── Config & Constants ────────────────────────────────────────────────────────
 
@@ -265,7 +268,7 @@ class BaseballMatcher(BaseMatcher):
                     p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
                     continue
-                k_game_dt_utc = k_game_dt + timedelta(hours=4)
+                k_game_dt_utc = k_game_dt.replace(tzinfo=_ET).astimezone(timezone.utc)
                 if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
                     continue
                 poly_kteam_sides = [

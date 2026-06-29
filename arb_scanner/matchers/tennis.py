@@ -3,6 +3,8 @@ import re
 import unicodedata
 from matchers.base import BaseMatcher
 
+_VALID_PREFIXES = ("KXATP", "KXWTA")
+
 def normalize_name(s: str) -> str:
     s = unicodedata.normalize("NFD", s)
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
@@ -44,6 +46,8 @@ class TennisMatcher(BaseMatcher):
     ) -> list[dict]:
         matches = []
         for km in kalshi_markets:
+            if not any(km.get("ticker", "").startswith(p) for p in _VALID_PREFIXES):
+                continue
             raw_k = km.get("raw", {})
             title = km.get("title", "") or raw_k.get("title", "") or raw_k.get("subtitle", "")
             players_k = extract_players(title)

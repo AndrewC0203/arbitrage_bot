@@ -1,4 +1,4 @@
-# Agent Instructions — read entirely before any task.
+# Agent Instructions — read CLAUDE.md and LEARNED_RULES.md entirely before any task.
 
 ## Project: MLB/NBA/Soccer/Tennis Arb Scanner
 
@@ -8,19 +8,20 @@ Read-only WebSocket arbitrage scanner for Kalshi + Polymarket US. Logs opportuni
 
 ```
 arb_scanner/
-  ws_manager.py       # MAIN ENTRY: dual WebSocket engine
+  ws_manager.py          # MAIN ENTRY: dual WebSocket engine
   matchers/
-    base.py           # BaseMatcher ABC
-    baseball.py       # MLB moneyline + alias resolution
-    basketball.py     # NBA/WNBA/NCAAB
-    soccer.py         # EPL/MLS/Champions League
-    tennis.py         # ATP/WTA
-  arb_log.jsonl       # append-only JSONL (opened/updated/closed/prop_arb/fetch_error)
-  test_scanner.py     # unit tests
-  requirements.txt    # aiohttp, websockets, requests, python-dotenv, cryptography
-  .env                # KALSHI_KEY_ID, KALSHI_KEY_PATH, POLYMARKET_US_KEY_ID, POLYMARKET_US_SECRET_KEY
-  debug/              # diagnostic one-shot scripts (not in main loop)
-active/               # Claude agent reports — not code
+    base.py              # BaseMatcher ABC
+    baseball.py          # MLB moneyline + alias resolution
+    basketball.py        # NBA/WNBA/NCAAB
+    soccer.py            # EPL/MLS/Champions League
+    tennis.py            # ATP/WTA
+  arb_log.jsonl          # append-only JSONL (opened/updated/closed/prop_arb/fetch_error)
+  test_scanner.py        # unit tests
+  requirements.txt       # aiohttp, websockets, requests, python-dotenv, cryptography
+  .env                   # KALSHI_KEY_ID, KALSHI_KEY_PATH, POLYMARKET_US_KEY_ID, POLYMARKET_US_SECRET_KEY
+  debug/                 # diagnostic one-shot scripts (not in main loop)
+  DECISIONS.md           # architectural decision log (append-only)
+active/                  # Claude agent reports — not code
 archive/rest_fallback/   # REST-polling predecessors
 archive/migration_scripts/ # one-time migration scripts
 ```
@@ -86,37 +87,53 @@ pytest test_scanner.py  # unit tests
 
 ---
 
-## Self-Correcting Rules Engine
+## Git Workflow
 
-At session start, read **all** Learned Rules before anything else. When corrected or when you make a mistake, immediately append a rule below.
+- Always branch from main. **Never commit directly to main.**
+- Branch naming: `claude/<type>-<short-description>` (e.g. `claude/fix-odds-normalization`)
+- Open a **draft PR immediately** when starting any new branch — before writing code
+- Commit atomically after each logical unit of change. No mega-commits.
+- Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore:`, `test:` — subject ≤ 50 chars
+- Fill out `.github/pull_request_template.md` before marking a PR ready-for-review
+- No auto-push.
+- Full details: `skills/git-workflow.md`
 
-Format: `N. [CATEGORY] Never/Always X — because Y.`
-Categories: [STYLE] [CODE] [ARCH] [TOOL] [PROCESS] [DATA] [UX] [OTHER]
-Higher-numbered rule wins on conflict. Never delete rules; supersede with a new one.
+## Decision Logging
 
-Add a rule when: user corrects output, rejects a file/approach/pattern, you hit a bug from a wrong assumption, or user states a preference.
+When you hit a fork with 2+ reasonable approaches, append to `DECISIONS.md` before proceeding:
 
-### Commit Guidelines
+```
+## [YYYY-MM-DD] [topic] — chose X over Y because Z
+```
 
-- Atomic commits per logical unit. Conventional Commits format (`feat:`, `fix:`, `refactor:`, `chore:`).
-- Subject line ≤ 50 chars. No auto-push.
+Don't halt — log and proceed. I'll review at PR time.
+
+## Scripts vs Agents
+
+Data fetching and transformation (fetch → transform → output) stays as scripts. They don't need to reason. Subagents are for tasks requiring judgment or decision-making mid-process. Do not refactor working scripts into agents.
+
+## Skills
+
+| Skill                        | When to invoke                                       |
+| ---------------------------- | ---------------------------------------------------- |
+| `skills/git-workflow.md`     | Full branch/commit/PR procedure                      |
+| `skills/pr-writer.md`        | Generating PR descriptions from diff + commit log    |
+| `skills/debug.md`            | Before assuming root cause on any bug                |
+| `skills/prompt-contracts.md` | Defining subagent I/O contracts                      |
+| `skills/unit-tests.md`       | PICT-based unit test generation                      |
+| `skills/subagent-review.md`  | Reviewing subagent output before using it downstream |
 
 ---
 
-## Learned Rules
+## Self-Correcting Rules Engine
 
-<!-- Append new rules below. Do not edit above. -->
+All learned rules live in **`LEARNED_RULES.md`** — read it at session start, every session.
 
-1. [ARCH] Never query `gamma-api.polymarket.com` or `clob.polymarket.com` for daily MLB game markets — international exchange endpoints, macro futures only. **Superseded by rule 4.**
+When corrected or when you make a mistake, immediately append a rule there.
 
-2. [ARCH] Polymarket US market data: `GET https://gateway.polymarket.us/v2/leagues/mlb/events?limit=100`. Moneyline markets have `sportsMarketType == "baseball_team_full_game_winner"`. Each market has `marketSides[]` with `team.abbreviation` (lowercase, e.g. `"cin"`) and `quote.value` (ask as USD decimal string). `api.polymarket.us` requires Ed25519 auth but only for trading, not market data.
+Format: `N. [CATEGORY] Never/Always X — because Y.`
+Categories: `[STYLE]` `[CODE]` `[ARCH]` `[TOOL]` `[PROCESS]` `[DATA]` `[UX]` `[OTHER]`
 
-3. [CODE] Kalshi v2 returns ask prices as `yes_ask_dollars` (string, USD), not `yes_ask` (int cents). Read `yes_ask_dollars` first, fall back to `yes_ask`. `None` means no live quote, not missing field.
+Higher-numbered rule wins on conflict. Never delete rules — supersede with a new one.
 
-4. [CODE] Kalshi titles use abbreviated team names (e.g. `"Los Angeles D"`, `"New York M"`, `"Chicago WS"`, `"A's"`). `_ALIASES` must include these short forms. Don't rely on full city/nickname strings.
-
-5. [CODE] Never use Kalshi `close_time` for game date/time — it's the settlement expiry (~3 days post-game). Extract from ticker: `KXMLBGAME-26JUN281340SEACLE-SEA` → `26JUN281340` → `datetime.strptime(..., "%y%b%d%H%M")`. Kalshi times are **ET (UTC-4)**; Polymarket `gameStartTime` is **UTC** — add 4h before comparing. Match valid if within 30 min. Date-only comparison allows false matches (same teams, multiple days).
-
-6. [CODE] Never filter Polymarket player props by a single UTC date string — evening ET games (7 PM ET = 23:xx UTC) cross midnight UTC and get dropped. Accept both `today_str` and `yesterday_str`; gate freshness on `active=True, closed=False`. For props use `GET /v1/search?query=mlb+will+record+at+least&limit=200` — `/v2/leagues/mlb/events` only returns team-level markets.
-
-7. [CODE] `fetch_kalshi_props` must accept yesterday's UTC date. After midnight UTC, evening ET games sit on yesterday's UTC date in Kalshi. Always pass `valid_dates = {today_utc, today_utc - 1 day}`.
+Add a rule when: user corrects output, rejects a file/approach/pattern, you hit a bug from a wrong assumption, or user states a preference.
