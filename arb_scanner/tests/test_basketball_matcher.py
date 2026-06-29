@@ -38,7 +38,7 @@ REQUIRED_KEYS = {
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_kalshi(title, ticker="KXNBA-ABC", ask=0.48, taker_fee=0.0048, raw=None):
+def make_kalshi(title, ticker="KXNBA-26JUN281900LAKBOS-LAL", ask=0.48, taker_fee=0.0048, raw=None):
     return {
         "ticker": ticker,
         "title": title,
@@ -262,8 +262,8 @@ class TestNoGameTimeCheck(unittest.TestCase):
         Since we added alias lookups, 'lakers' might not match via alias if we only use 3-letter codes,
         but if it does match, it will match both. This test passes even if 0 matches are returned (graceful degradation).
         """
-        km1 = make_kalshi("Lakers vs Celtics", ticker="KXNBA-ABC-GAME1", ask=0.48, taker_fee=0.0)
-        km2 = make_kalshi("Lakers vs Celtics", ticker="KXNBA-ABC-GAME2", ask=0.52, taker_fee=0.0)
+        km1 = make_kalshi("Lakers vs Celtics", ticker="KXNBA-26JUN281900LAKBOS-LAL", ask=0.48, taker_fee=0.0)
+        km2 = make_kalshi("Lakers vs Celtics", ticker="KXNBA-26JUN292000LAKBOS-LAL", ask=0.52, taker_fee=0.0)
         pm = make_poly("lakers", ask=0.47, taker_fee=0.0)
         results = self.matcher.match([km1, km2], [pm])
         # (short enough to appear as substring of the simplified title)
@@ -329,7 +329,7 @@ class TestNewAliases(unittest.TestCase):
 
     def test_den_matches_kalshi_title(self):
         """End-to-end: Kalshi 'Denver Nuggets vs Boston Celtics', Poly abbr 'den' → 1 match."""
-        km = make_kalshi("Denver Nuggets vs Boston Celtics", ticker="KXNBA-001", ask=0.48, taker_fee=0.0)
+        km = make_kalshi("Denver Nuggets vs Boston Celtics", ticker="KXNBA-26JUN281900DENBOS-DEN", ask=0.48, taker_fee=0.0)
         pm = make_poly("den", ask=0.47, taker_fee=0.0)
         results = self.matcher.match([km], [pm])
         self.assertEqual(len(results), 1)
@@ -365,15 +365,15 @@ class TestWnbaNbaCollisionRisk(unittest.TestCase):
         same Poly team_abbr='phx' will both produce match results when passed together.
         Production protection: ws_manager must pass separate Poly lists per league.
         """
-        km_nba  = make_kalshi("Phoenix Suns vs Los Angeles Lakers", ticker="KXNBA-26JUN-PHX", ask=0.48, taker_fee=0.0)
-        km_wnba = make_kalshi("Phoenix Mercury vs Las Vegas Aces",  ticker="KXWNBA-26JUN-PHX", ask=0.48, taker_fee=0.0)
+        km_nba  = make_kalshi("Phoenix Suns vs Los Angeles Lakers", ticker="KXNBA-26JUN281900PHXLAL-PHX", ask=0.48, taker_fee=0.0)
+        km_wnba = make_kalshi("Phoenix Mercury vs Las Vegas Aces",  ticker="KXWNBA-26JUN281900PHXLVV-PHX", ask=0.48, taker_fee=0.0)
         pm = make_poly("phx", ask=0.47, taker_fee=0.0)
         results = self.matcher.match([km_nba, km_wnba], [pm])
         tickers = [r["kalshi_ticker"] for r in results]
         # RISK-BB2: both markets match the same Poly entry.
-        self.assertIn("KXNBA-26JUN-PHX", tickers,
+        self.assertIn("KXNBA-26JUN281900PHXLAL-PHX", tickers,
             "RISK-BB2: NBA Phoenix Suns matches Poly 'phx' — expected")
-        self.assertIn("KXWNBA-26JUN-PHX", tickers,
+        self.assertIn("KXWNBA-26JUN281900PHXLVV-PHX", tickers,
             "RISK-BB2: WNBA Phoenix Mercury also matches Poly 'phx' — cross-league collision")
 
 
@@ -412,7 +412,7 @@ class TestEdgeCases(unittest.TestCase):
     def test_missing_title_falls_back_to_raw(self):
         """km['title'] is empty string; should fall back to raw['title']."""
         km = {
-            "ticker": "KXNBA-ABC",
+            "ticker": "KXNBA-26JUN281900LAKBOS-LAL",
             "title": "",
             "ask": 0.48,
             "taker_fee": 0.0048,
@@ -426,7 +426,7 @@ class TestEdgeCases(unittest.TestCase):
     def test_missing_raw_key_no_crash(self):
         """km has no 'raw' key at all — should not raise KeyError."""
         km = {
-            "ticker": "KXNBA-ABC",
+            "ticker": "KXNBA-26JUN281900LAKBOS-LAL",
             "title": "Los Angeles Lakers vs Boston Celtics",
             "ask": 0.48,
             "taker_fee": 0.0,
@@ -494,14 +494,14 @@ class TestEdgeCases(unittest.TestCase):
         (e.g., same game appearing in both KXNBA and KXWNBA feed).
         Both results are present.
         """
-        km1 = make_kalshi("Lakers vs Celtics", ticker="KXNBA-001", ask=0.48, taker_fee=0.0)
-        km2 = make_kalshi("Lakers vs Celtics", ticker="KXWNBA-001", ask=0.48, taker_fee=0.0)
+        km1 = make_kalshi("Lakers vs Celtics", ticker="KXNBA-26JUN281900LAKBOS-LAL", ask=0.48, taker_fee=0.0)
+        km2 = make_kalshi("Lakers vs Celtics", ticker="KXWNBA-26JUN281900LAKBOS-LAL", ask=0.48, taker_fee=0.0)
         pm = make_poly("lakers", ask=0.47, taker_fee=0.0)
         results = self.matcher.match([km1, km2], [pm])
         tickers = [r["kalshi_ticker"] for r in results]
         # Both tickers appear — confirms no dedup, which can cause duplicate log entries.
-        self.assertIn("KXNBA-001", tickers)
-        self.assertIn("KXWNBA-001", tickers)
+        self.assertIn("KXNBA-26JUN281900LAKBOS-LAL", tickers)
+        self.assertIn("KXWNBA-26JUN281900LAKBOS-LAL", tickers)
 
 
 # ---------------------------------------------------------------------------

@@ -135,6 +135,8 @@ class SoccerMatcher(BaseMatcher):
             team_a, team_b = teams_k
 
             k_game_dt_utc = _kalshi_game_dt_utc(km.get("ticker", ""))
+            if k_game_dt_utc is None:
+                continue
 
             for pm in polymarket_markets:
                 pm_code = team_code(pm.get("team_abbr", "") or pm.get("team", ""))
@@ -147,14 +149,13 @@ class SoccerMatcher(BaseMatcher):
                 else:
                     continue
 
-                if k_game_dt_utc is not None:
-                    try:
-                        p_start = pm.get("raw", {}).get("gameStartTime", "")
-                        p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
-                        if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
-                            continue
-                    except (ValueError, AttributeError):
-                        pass
+                try:
+                    p_start = pm.get("raw", {}).get("gameStartTime", "")
+                    p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
+                    if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
+                        continue
+                except (ValueError, AttributeError):
+                    pass
 
                 k_ask = km.get("ask", 0.0)
                 p_ask = pm.get("ask", 0.0)

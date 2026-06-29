@@ -36,7 +36,7 @@ REQUIRED_KEYS = {
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def make_kalshi(ticker="KXEPL-T1-T2", title="Team1 vs Team2",
+def make_kalshi(ticker="KXEPL-26JUN281400T1T2", title="Team1 vs Team2",
                 ask=0.45, fee=0.01, raw=None):
     return {"ticker": ticker, "title": title, "ask": ask,
             "taker_fee": fee, "raw": raw or {}}
@@ -81,7 +81,7 @@ class TestSoccerMatcherContract(unittest.TestCase):
         and _build_event() access. Missing keys cause KeyError at log time.
         """
         m = SoccerMatcher()
-        km = [make_kalshi(ticker="KXEPL-ARS-CHE", title="Arsenal vs Chelsea")]
+        km = [make_kalshi(ticker="KXEPL-26JUN281400ARSCHE", title="Arsenal vs Chelsea")]
         pm = [make_poly(slug="epl-ars-che", team_abbr="ars")]
         results = m.match(km, pm)
         self.assertEqual(len(results), 1)
@@ -226,8 +226,8 @@ class TestAmbiguousAbbreviationRisk(unittest.TestCase):
     def setUp(self):
         self.m = SoccerMatcher()
         self.kalshi_markets = [
-            make_kalshi(ticker="KXEPL-MC-LIV", title="Manchester City vs Liverpool"),
-            make_kalshi(ticker="KXEPL-MU-ARS", title="Manchester United vs Arsenal"),
+            make_kalshi(ticker="KXEPL-26JUN281400MCLIV", title="Manchester City vs Liverpool"),
+            make_kalshi(ticker="KXEPL-26JUN281400MUARS", title="Manchester United vs Arsenal"),
         ]
 
     def test_man_abbreviation_false_positive(self):
@@ -283,16 +283,16 @@ class TestNoGameTimeValidation(unittest.TestCase):
         """
         m = SoccerMatcher()
         kalshi_markets = [
-            make_kalshi(ticker="KXEPL-ARS-CHE-1400", title="Arsenal vs Chelsea"),
-            make_kalshi(ticker="KXEPL-ARS-CHE-1900", title="Arsenal vs Chelsea"),
+            make_kalshi(ticker="KXEPL-26JUN281400ARSCHE", title="Arsenal vs Chelsea"),
+            make_kalshi(ticker="KXEPL-26JUN281900ARSCHE", title="Arsenal vs Chelsea"),
         ]
         pm = [make_poly(team_abbr="ars", ask=0.44, fee=0.01)]
         results = m.match(kalshi_markets, pm)
         self.assertEqual(len(results), 2,
-                         "Both fixtures produce matches — no time filter exists")
+                         "Both fixtures (different times) produce matches when poly has no gameStartTime")
         tickers = [r["kalshi_ticker"] for r in results]
-        self.assertIn("KXEPL-ARS-CHE-1400", tickers)
-        self.assertIn("KXEPL-ARS-CHE-1900", tickers)
+        self.assertIn("KXEPL-26JUN281400ARSCHE", tickers)
+        self.assertIn("KXEPL-26JUN281900ARSCHE", tickers)
 
 
 class TestSoccerDrawSide(unittest.TestCase):
@@ -397,7 +397,7 @@ class TestCrossLeagueContamination(unittest.TestCase):
         substring of 'arsenal' or 'chelsea'. No spurious match.
         """
         m = SoccerMatcher()
-        km = [make_kalshi(ticker="KXEPL-ARS-CHE", title="Arsenal vs Chelsea")]
+        km = [make_kalshi(ticker="KXEPL-26JUN281400ARSCHE", title="Arsenal vs Chelsea")]
         pm = [make_poly(slug="mls-inter-miami", team_abbr="mia", ask=0.44)]
         results = m.match(km, pm)
         self.assertEqual(len(results), 0)
@@ -421,7 +421,7 @@ class TestCrossLeagueContamination(unittest.TestCase):
         No league filter prevents this.
         """
         m = SoccerMatcher()
-        km = [make_kalshi(ticker="KXMLS-CHI-LAG", title="Chicago vs LA Galaxy")]
+        km = [make_kalshi(ticker="KXMLS-26JUN281900CHILAG", title="Chicago vs LA Galaxy")]
         pm = [make_poly(slug="epl-chi-something", team_abbr="chi", ask=0.44)]
         results = m.match(km, pm)
         # Demonstrates the contamination — 'chi' in 'chicago' is True
@@ -500,7 +500,7 @@ class TestMlsMatch(unittest.TestCase):
     def test_mls_arb_match(self):
         """Basic MLS match: LA Galaxy vs Inter Miami."""
         m = SoccerMatcher()
-        km = [make_kalshi(ticker="KXMLS-LAG-MIA", title="LA Galaxy vs Inter Miami",
+        km = [make_kalshi(ticker="KXMLS-26JUN281900LAGMIA", title="LA Galaxy vs Inter Miami",
                           ask=0.43, fee=0.01)]
         pm = [make_poly(slug="mls-la-galaxy", team_abbr="lag", ask=0.45, fee=0.01)]
         # 'lag' in 'la galaxy'? No. 'lag' -> 'l' + 'a' + 'g' not in 'la galaxy' as substring

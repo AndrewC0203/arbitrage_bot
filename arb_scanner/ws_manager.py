@@ -202,6 +202,8 @@ def teams_from_kalshi_market(market: dict) -> Optional[tuple[str, str]]:
     return teams_from_kalshi_title(title)
 
 
+# Used only by today_tickers() for date-range filtering (date() comparison only).
+# Intentionally NOT ET-corrected — a 4-5h UTC error is irrelevant at date granularity.
 def _kalshi_game_dt(ticker: str) -> Optional[datetime]:
     try:
         segment = ticker.split("-")[1]
