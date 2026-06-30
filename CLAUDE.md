@@ -44,8 +44,18 @@ archive/migration_scripts/ # one-time migration scripts
 
 ### Arb Detection
 
-1. **Moneyline**: Kalshi YES (team A) + Polymarket YES (team B). If `kalshi_ask + poly_ask + fees < 0.96` → arb.
-2. **Props**: Match by `(smt, player_norm, line, game_date)`. YES one side + NO other if total < 0.96.
+Fees are computed per-leg as a fraction of the ask price, then summed:
+
+```
+k_fee   = kalshi_ask  × KALSHI_TAKER_FEE_RATE   (0.01)
+p_fee   = poly_ask    × POLYMARKET_TAKER_FEE_RATE (0.01)
+total_cost = kalshi_ask + poly_ask + k_fee + p_fee
+           = 1.01 × (kalshi_ask + poly_ask)
+is_arb  = total_cost < ARB_THRESHOLD (0.96)
+```
+
+1. **Moneyline**: Kalshi YES (team A) + Polymarket YES (team B). Arb when `total_cost < 0.96`.
+2. **Props**: Match by `(smt, player_norm, line, game_date)`. YES one side + NO other; same formula.
 3. **Value plays**: Polymarket MLB spread/total markets where both sides < 0.96 (REST seed only, not WS).
 
 ### Sports Configs
