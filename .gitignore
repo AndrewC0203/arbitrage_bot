@@ -4,3 +4,5 @@ __pycache__/
 arb_log.jsonl
 .pytest_cache/
 kalshi.pem
+arb_scanner/debug/*.txt
+arb_scanner/debug/*.json
