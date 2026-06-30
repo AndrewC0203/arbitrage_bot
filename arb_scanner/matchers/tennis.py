@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Optional
 import re
 import unicodedata
@@ -10,6 +11,66 @@ _SUBJECT_RE = re.compile(r"^will (.+?) win the ", re.IGNORECASE)
 
 # Extracts both players from the embedded "A vs B:" segment of the same title
 _MATCHUP_RE = re.compile(r"win the (.+?) vs (.+?):", re.IGNORECASE)
+
+# --- Disambiguation guards ---
+_TICKER_DATE_RE    = re.compile(r"KX[A-Z]+-(\d{2})([A-Z]{3})(\d{2})")
+_SLUG_DATE_RE      = re.compile(r"(\d{4}-\d{2}-\d{2})$")
+_TICKER_PLAYERS_RE = re.compile(r"KX[A-Z]+-\d{2}[A-Z]{3}\d{2}([A-Z]+)-[A-Z]+$")
+_SLUG_PLAYERS_RE   = re.compile(r"aec-(?:atp|wta)-(.+)-\d{4}-\d{2}-\d{2}$")
+_MONTHS = {"JAN":1,"FEB":2,"MAR":3,"APR":4,"MAY":5,"JUN":6,
+           "JUL":7,"AUG":8,"SEP":9,"OCT":10,"NOV":11,"DEC":12}
+
+
+def _parse_kalshi_date(ticker: str) -> Optional[date]:
+    m = _TICKER_DATE_RE.search(ticker)
+    if not m:
+        return None
+    month = _MONTHS.get(m.group(2))
+    if not month:
+        return None
+    try:
+        return date(2000 + int(m.group(1)), month, int(m.group(3)))
+    except ValueError:
+        return None
+
+
+def _parse_poly_date(slug: str) -> Optional[date]:
+    m = _SLUG_DATE_RE.search(slug)
+    if not m:
+        return None
+    try:
+        return date.fromisoformat(m.group(1))
+    except ValueError:
+        return None
+
+
+def _kalshi_league(ticker: str) -> str:
+    return "wta" if ticker.startswith("KXWTA") else "atp"
+
+
+def _poly_league(slug: str) -> Optional[str]:
+    if "aec-wta" in slug:
+        return "wta"
+    if "aec-atp" in slug:
+        return "atp"
+    return None
+
+
+def _abbr_fingerprint_ok(ticker: str, slug: str) -> bool:
+    """Both Poly slug player abbrev suffixes (last 3 chars) must appear in Kalshi's fused player segment."""
+    tm = _TICKER_PLAYERS_RE.match(ticker)
+    sm = _SLUG_PLAYERS_RE.match(slug)
+    if not tm or not sm:
+        return True  # can't parse → conservative pass
+    t_combined = tm.group(1).lower()
+    s_parts = sm.group(1).split("-")
+    if len(s_parts) < 2:
+        return True
+    long_parts = [s for s in s_parts if len(s) >= 3]
+    if not long_parts:
+        return True  # can't fingerprint → conservative pass
+    hits = sum(1 for s in long_parts if s[-3:] in t_combined)
+    return hits >= min(2, len(long_parts))
 
 
 def normalize_name(s: str) -> str:
@@ -127,6 +188,24 @@ class TennisMatcher(BaseMatcher):
                 if not _names_match(opponent, pm_name) and not _names_match(pm_name, opponent):
                     continue
 
+                pm_slug = pm.get("slug", "") or pm.get("raw", {}).get("slug", "")
+                km_ticker = km.get("ticker", "")
+
+                # Guard 1: dates must be within 1 day (late-night ET matches can cross midnight UTC)
+                k_date = _parse_kalshi_date(km_ticker)
+                p_date = _parse_poly_date(pm_slug)
+                if k_date and p_date and abs((k_date - p_date).days) > 1:
+                    continue
+
+                # Guard 2: ATP ticker must not match WTA slug and vice versa
+                p_league = _poly_league(pm_slug)
+                if p_league and _kalshi_league(km_ticker) != p_league:
+                    continue
+
+                # Guard 3: both Poly player abbrev suffixes must appear in Kalshi's fused player segment
+                if not _abbr_fingerprint_ok(km_ticker, pm_slug):
+                    continue
+
                 k_ask = km.get("ask", 0.0)
                 p_ask = pm.get("ask", 0.0)
                 if k_ask <= 0 or p_ask <= 0:
@@ -142,7 +221,7 @@ class TennisMatcher(BaseMatcher):
                     "kalshi_team": subject,
                     "kalshi_ask": round(k_ask, 6),
                     "kalshi_taker_fee": round(k_fee, 6),
-                    "polymarket_slug": pm.get("slug", "") or pm.get("raw", {}).get("slug", ""),
+                    "polymarket_slug": pm_slug,
                     "polymarket_team": pm_name,
                     "polymarket_ask": round(p_ask, 6),
                     "polymarket_taker_fee": round(p_fee, 6),

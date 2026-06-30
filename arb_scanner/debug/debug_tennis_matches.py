@@ -9,11 +9,12 @@ import asyncio
 import json
 import os
 import sys
-import unicodedata
-import re
 
 import aiohttp
 from dotenv import load_dotenv
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from matchers.tennis import TennisMatcher, normalize_name
 
 load_dotenv()
 
@@ -23,30 +24,6 @@ REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=8)
 KALSHI_TAKER_FEE_RATE = 0.01
 POLYMARKET_TAKER_FEE_RATE = 0.01
 OUTPUT_FILE = "debug/tennis_matches.json"
-
-_SUBJECT_RE = re.compile(r"^will (.+?) win the ", re.IGNORECASE)
-
-
-def normalize_name(s: str) -> str:
-    s = unicodedata.normalize("NFD", s)
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9 ]+", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
-
-
-def _extract_subject(title: str):
-    m = _SUBJECT_RE.match(title.strip())
-    return normalize_name(m.group(1)) if m else None
-
-
-def _names_match(subject: str, pm_name: str) -> bool:
-    if not subject or not pm_name:
-        return False
-    last_name = subject.split()[-1]
-    if len(last_name) < 4:
-        return subject == pm_name
-    return bool(re.search(r"\b" + re.escape(last_name) + r"\b", pm_name))
 
 
 async def fetch_kalshi_tennis(session: aiohttp.ClientSession) -> list[dict]:
@@ -135,45 +112,14 @@ async def fetch_polymarket_tennis(session: aiohttp.ClientSession) -> list[dict]:
 
 
 def match_markets(kalshi_markets: list[dict], poly_markets: list[dict]) -> tuple[list, list]:
-    matches = []
-    unmatched_kalshi = []
-
-    for km in kalshi_markets:
-        subject = _extract_subject(km["title"])
-        if not subject:
-            unmatched_kalshi.append({"ticker": km["ticker"], "title": km["title"], "reason": "no subject extracted"})
-            continue
-
-        matched = False
-        for pm in poly_markets:
-            pm_name = pm.get("team_name", "") or pm.get("team_abbr", "")
-            if not _names_match(subject, pm_name):
-                continue
-
-            total_cost = km["ask"] + pm["ask"] + km["taker_fee"] + pm["taker_fee"]
-            matches.append({
-                "kalshi_ticker": km["ticker"],
-                "kalshi_title": km["title"],
-                "kalshi_player": subject,
-                "kalshi_ask": round(km["ask"], 6),
-                "polymarket_slug": pm["slug"],
-                "polymarket_title": pm["title"],
-                "polymarket_player": pm_name,
-                "polymarket_ask": round(pm["ask"], 6),
-                "total_cost": round(total_cost, 6),
-                "gap_cents": round((0.96 - total_cost) * 100, 4),
-                "is_arb": total_cost < 0.96,
-            })
-            matched = True
-
-        if not matched:
-            unmatched_kalshi.append({
-                "ticker": km["ticker"],
-                "title": km["title"],
-                "subject_extracted": subject,
-                "reason": "no polymarket side matched",
-            })
-
+    matcher = TennisMatcher()
+    matches = matcher.match(kalshi_markets, poly_markets)
+    matched_tickers = {m["kalshi_ticker"] for m in matches}
+    unmatched_kalshi = [
+        {"ticker": km["ticker"], "title": km["title"], "reason": "no polymarket side matched"}
+        for km in kalshi_markets
+        if km["ticker"] not in matched_tickers
+    ]
     return matches, unmatched_kalshi
 
 
@@ -210,15 +156,15 @@ async def main():
         for m in matches:
             arb_tag = " *** ARB ***" if m["is_arb"] else ""
             print(
-                f"  {m['kalshi_ticker']} ({m['kalshi_player']}) <-> "
-                f"{m['polymarket_slug']} ({m['polymarket_player']}) "
+                f"  {m['kalshi_ticker']} ({m['kalshi_team']}) <-> "
+                f"{m['polymarket_slug']} ({m['polymarket_team']}) "
                 f"cost={m['total_cost']:.4f} gap={m['gap_cents']:+.2f}c{arb_tag}"
             )
 
     if unmatched:
         print(f"\n--- UNMATCHED KALSHI ({len(unmatched)}) ---")
         for u in unmatched[:20]:
-            print(f"  {u['ticker']}: {u.get('subject_extracted', '?')} — {u['reason']}")
+            print(f"  {u['ticker']}: {u['reason']}")
         if len(unmatched) > 20:
             print(f"  ... and {len(unmatched) - 20} more")
 

@@ -14,7 +14,10 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from matchers.base import BaseMatcher
-from matchers.tennis import TennisMatcher, normalize_name, _extract_subject, _extract_matchup
+from matchers.tennis import (
+    TennisMatcher, normalize_name, _extract_subject, _extract_matchup,
+    _parse_kalshi_date, _parse_poly_date, _kalshi_league, _poly_league, _abbr_fingerprint_ok,
+)
 
 
 REQUIRED_KEYS = {
@@ -465,6 +468,147 @@ class TestEdgeCases(unittest.TestCase):
         pm = make_poly("Djokovic", ask=0.40, taker_fee=0.0)
         r = self.matcher.match([km], [pm])[0]
         self.assertAlmostEqual(r["gap_cents"], 16.0, places=4)
+
+
+# ---------------------------------------------------------------------------
+# 9. Disambiguation guards — date, league, abbreviation fingerprint
+# ---------------------------------------------------------------------------
+
+class TestDisambiguationGuards(unittest.TestCase):
+    """
+    Guards that eliminate false positives when name-matching alone is ambiguous.
+    All three guards must pass for a pair to be emitted as a match.
+    """
+
+    TITLE_TSI = "Will Stefanos Tsitsipas win the Tsitsipas vs Djokovic: Round Of 64 match?"
+    TITLE_KYP = "Will Patrick Kypson win the Kypson vs Mcdonald: R64 match?"
+    TITLE_WAL = "Will Simona Waltert win the Osorio vs Waltert: R64 match?"
+    TITLE_JOV = "Will Iva Jovic win the Tatjana Maria vs Iva Jovic: R64 match?"
+    TITLE_MAR_JOV = "Will Tatjana Maria win the Tatjana Maria vs Iva Jovic: R64 match?"
+
+    # --- helper factories with real ticker/slug formats ---
+    def km(self, title, ticker, ask=0.47):
+        return {"ticker": ticker, "title": title, "ask": ask, "taker_fee": 0.0, "raw": {}}
+
+    def pm(self, team_name, slug, ask=0.45):
+        return {"slug": slug, "team_name": team_name, "ask": ask, "taker_fee": 0.0}
+
+    # --- unit tests for helper functions ---
+
+    def test_parse_kalshi_date(self):
+        from datetime import date
+        self.assertEqual(_parse_kalshi_date("KXATPMATCH-26JUL01TSIDJO-TSI"), date(2026, 7, 1))
+        self.assertEqual(_parse_kalshi_date("KXWTAMATCH-26JUN29OSOWAL-WAL"), date(2026, 6, 29))
+        self.assertIsNone(_parse_kalshi_date("KXATPMATCH-001"))
+
+    def test_parse_poly_date(self):
+        from datetime import date
+        self.assertEqual(_parse_poly_date("aec-atp-stetsi-novdjo-2026-07-01"), date(2026, 7, 1))
+        self.assertEqual(_parse_poly_date("aec-wta-camoso-simwal-2026-06-29"), date(2026, 6, 29))
+        self.assertIsNone(_parse_poly_date("atp-tsitsipas-djokovic"))
+
+    def test_kalshi_league(self):
+        self.assertEqual(_kalshi_league("KXATPMATCH-26JUL01TSIDJO-TSI"), "atp")
+        self.assertEqual(_kalshi_league("KXWTAMATCH-26JUN29OSOWAL-WAL"), "wta")
+
+    def test_poly_league(self):
+        self.assertEqual(_poly_league("aec-atp-stetsi-novdjo-2026-07-01"), "atp")
+        self.assertEqual(_poly_league("aec-wta-camoso-simwal-2026-06-29"), "wta")
+        self.assertIsNone(_poly_league("atp-tsitsipas-djokovic"))
+
+    def test_abbr_fingerprint_correct_pairs(self):
+        self.assertTrue(_abbr_fingerprint_ok("KXATPMATCH-26JUL01TSIDJO-TSI", "aec-atp-stetsi-novdjo-2026-07-01"))
+        self.assertTrue(_abbr_fingerprint_ok("KXATPMATCH-26JUL01TSIDJO-DJO", "aec-atp-stetsi-novdjo-2026-07-01"))
+        self.assertTrue(_abbr_fingerprint_ok("KXATPMATCH-26JUN29KYPMCD-KYP", "aec-atp-patkyp-macmcd-2026-06-29"))
+        self.assertTrue(_abbr_fingerprint_ok("KXWTAMATCH-26JUL01MARJOV-MAR", "aec-wta-tatmar-ivajov-2026-06-30"))
+        self.assertTrue(_abbr_fingerprint_ok("KXWTAMATCH-26JUL01MARJOV-JOV", "aec-wta-tatmar-ivajov-2026-06-30"))
+
+    def test_abbr_fingerprint_false_positive_pairs(self):
+        # Kypson ticker matched Niels McDonald slug (same date/league, wrong match)
+        self.assertFalse(_abbr_fingerprint_ok("KXATPMATCH-26JUN29KYPMCD-KYP", "aec-atp-niemcd-juamar-2026-06-29"))
+        # Jovic ticker matched Sakkari slug
+        self.assertFalse(_abbr_fingerprint_ok("KXWTAMATCH-26JUL01MARJOV-JOV", "aec-wta-marsak-clatau-2026-06-29"))
+        # Jovic ticker matched Timofeeva slug
+        self.assertFalse(_abbr_fingerprint_ok("KXWTAMATCH-26JUL01MARJOV-JOV", "aec-wta-beamai-martim-2026-06-29"))
+
+    def test_abbr_fingerprint_unparseable_is_conservative(self):
+        # Non-standard formats → can't parse → return True (don't silently drop)
+        self.assertTrue(_abbr_fingerprint_ok("KXATPMATCH-001", "atp-tsitsipas-djokovic-2026-06-28"))
+
+    # --- integration: correct matches still pass all three guards ---
+
+    def test_correct_match_passes_all_guards(self):
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_TSI, "KXATPMATCH-26JUL01TSIDJO-TSI")
+        pm = self.pm("Novak Djokovic", "aec-atp-stetsi-novdjo-2026-07-01")
+        self.assertEqual(len(matcher.match([km], [pm])), 1)
+
+    # --- Guard 1: date ---
+
+    def test_guard1_different_date_blocked(self):
+        """Ticker date 2026-07-01, slug date 2026-06-29 — more than 1 day apart → blocked."""
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_TSI, "KXATPMATCH-26JUL01TSIDJO-TSI")
+        pm = self.pm("Novak Djokovic", "aec-atp-stetsi-novdjo-2026-06-29")
+        self.assertEqual(matcher.match([km], [pm]), [])
+
+    def test_guard1_one_day_apart_passes(self):
+        """±1 day is allowed for late-night ET matches crossing midnight UTC."""
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_TSI, "KXATPMATCH-26JUL01TSIDJO-TSI")
+        pm = self.pm("Novak Djokovic", "aec-atp-stetsi-novdjo-2026-06-30")
+        self.assertEqual(len(matcher.match([km], [pm])), 1)
+
+    def test_guard1_unparseable_dates_pass(self):
+        """If either date can't be parsed, guard is skipped (conservative)."""
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_TSI, "KXATPMATCH-001")
+        pm = self.pm("Novak Djokovic", "atp-tsitsipas-djokovic-2026-06-28")
+        self.assertEqual(len(matcher.match([km], [pm])), 1)
+
+    # --- Guard 2: league ---
+
+    def test_guard2_wta_ticker_atp_slug_blocked(self):
+        """WTA Kalshi ticker must not match ATP Polymarket slug."""
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_WAL, "KXWTAMATCH-26JUN29OSOWAL-WAL")
+        pm = self.pm("Juan Sebastian Osorio", "aec-atp-juaoso-petber-2026-06-30")
+        self.assertEqual(matcher.match([km], [pm]), [])
+
+    def test_guard2_matching_league_passes(self):
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_WAL, "KXWTAMATCH-26JUN29OSOWAL-WAL")
+        pm = self.pm("Camila Osorio", "aec-wta-camoso-simwal-2026-06-29")
+        self.assertEqual(len(matcher.match([km], [pm])), 1)
+
+    # --- Guard 3: abbreviation fingerprint ---
+
+    def test_guard3_kypson_niels_mcdonald_blocked(self):
+        """Same date, same league, wrong match: Kypson vs Mcdonald ticker must not match Niels Mcdonald slug."""
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_KYP, "KXATPMATCH-26JUN29KYPMCD-KYP")
+        pm = self.pm("Niels Mcdonald", "aec-atp-niemcd-juamar-2026-06-29")
+        self.assertEqual(matcher.match([km], [pm]), [])
+
+    def test_guard3_correct_mcdonald_passes(self):
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_KYP, "KXATPMATCH-26JUN29KYPMCD-KYP")
+        pm = self.pm("Mackenzie Mcdonald", "aec-atp-patkyp-macmcd-2026-06-29")
+        self.assertEqual(len(matcher.match([km], [pm])), 1)
+
+    def test_guard3_jovic_sakkari_blocked(self):
+        """Jovic ticker abbreviation fingerprint MARJOV does not match Sakkari slug marsak-clatau → blocked."""
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_JOV, "KXWTAMATCH-26JUL01MARJOV-JOV")
+        pm = self.pm("Maria Sakkari", "aec-wta-marsak-clatau-2026-06-29")
+        self.assertEqual(matcher.match([km], [pm]), [])
+
+    def test_guard3_jovic_correct_slug_passes(self):
+        """Jovic ticker MARJOV-JOV matches slug tatmar-ivajov: mar✓ + jov✓."""
+        matcher = TennisMatcher()
+        km = self.km(self.TITLE_JOV, "KXWTAMATCH-26JUL01MARJOV-JOV")
+        pm = self.pm("Tatjana Maria", "aec-wta-tatmar-ivajov-2026-06-30")
+        self.assertEqual(len(matcher.match([km], [pm])), 1)
 
 
 if __name__ == "__main__":
