@@ -25,12 +25,23 @@ def _parse_kalshi_date(ticker: str) -> Optional[date]:
     m = _TICKER_DATE_RE.search(ticker)
     if not m:
         return None
-    return date(2000 + int(m.group(1)), _MONTHS[m.group(2)], int(m.group(3)))
+    month = _MONTHS.get(m.group(2))
+    if not month:
+        return None
+    try:
+        return date(2000 + int(m.group(1)), month, int(m.group(3)))
+    except ValueError:
+        return None
 
 
 def _parse_poly_date(slug: str) -> Optional[date]:
     m = _SLUG_DATE_RE.search(slug)
-    return date.fromisoformat(m.group(1)) if m else None
+    if not m:
+        return None
+    try:
+        return date.fromisoformat(m.group(1))
+    except ValueError:
+        return None
 
 
 def _kalshi_league(ticker: str) -> str:
@@ -55,8 +66,11 @@ def _abbr_fingerprint_ok(ticker: str, slug: str) -> bool:
     s_parts = sm.group(1).split("-")
     if len(s_parts) < 2:
         return True
-    hits = sum(1 for s in s_parts if len(s) >= 3 and s[-3:] in t_combined)
-    return hits >= 2
+    long_parts = [s for s in s_parts if len(s) >= 3]
+    if not long_parts:
+        return True  # can't fingerprint → conservative pass
+    hits = sum(1 for s in long_parts if s[-3:] in t_combined)
+    return hits >= min(2, len(long_parts))
 
 
 def normalize_name(s: str) -> str:
