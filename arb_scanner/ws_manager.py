@@ -835,6 +835,9 @@ _msg_id_iter  = itertools.count(1)
 _poly_ws_ml_token_map:    dict[str, dict] = {}
 _poly_ws_props_token_map: dict[str, dict] = {}
 _poly_ws_lock = asyncio.Lock()
+# Incremental-update index: slug → {"yes": list_idx, "no": list_idx}
+# Built by _rebuild_poly_ml_cache(); patched in O(1) by _patch_poly_ml_entry()
+_poly_ml_slot: dict[str, dict[str, int]] = {}
 _last_status_log: float = 0.0   # epoch seconds; status lines throttled to once per 60s
 _STATUS_LOG_INTERVAL = 60
 # keyed by (kalshi_ticker, direction); value is (leg1_ask, leg2_ask) last printed/logged
@@ -1285,25 +1288,29 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
 
 def _rebuild_poly_ml_cache() -> None:
     """
-    Rebuild _poly_ml_cache from _poly_ws_ml_token_map (slug-keyed).
-    Emits one entry per side (YES team / NO team) in the format matcher.match() consumes.
+    Full rebuild of _poly_ml_cache from _poly_ws_ml_token_map. Also rebuilds
+    _poly_ml_slot index for O(1) incremental patches.
+    Called on startup/reconnect. Hot-path updates use _patch_poly_ml_entry() instead.
     Must be called while holding _poly_ws_lock (or before WS task starts).
     """
-    global _poly_ml_cache
+    global _poly_ml_cache, _poly_ml_slot
     now = datetime.now(timezone.utc)
     stale_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
-    markets = []
+    markets: list[dict] = []
+    slot: dict[str, dict[str, int]] = {}
     latest_update: Optional[datetime] = None
 
     for entry in _poly_ws_ml_token_map.values():
         updated = entry.get("updated_at")
         if updated is None or updated < stale_cutoff:
             continue
-        # Emit YES side (team that wins if YES resolves)
+        slug = entry["slug"]
+        slot[slug] = {}
         yes_ask = entry.get("yes_ask")
         if yes_ask and 0 < yes_ask < 1 and entry.get("yes_abbr"):
+            slot[slug]["yes"] = len(markets)
             markets.append({
-                "slug": entry["slug"],
+                "slug": slug,
                 "title": entry["title"],
                 "team_abbr": entry["yes_abbr"],
                 "team_name": entry.get("yes_name", ""),
@@ -1311,11 +1318,11 @@ def _rebuild_poly_ml_cache() -> None:
                 "taker_fee": round(yes_ask * POLYMARKET_TAKER_FEE_RATE, 6),
                 "raw": entry["raw"],
             })
-        # Emit NO side
         no_ask = entry.get("no_ask")
         if no_ask and 0 < no_ask < 1 and entry.get("no_abbr"):
+            slot[slug]["no"] = len(markets)
             markets.append({
-                "slug": entry["slug"],
+                "slug": slug,
                 "title": entry["title"],
                 "team_abbr": entry["no_abbr"],
                 "team_name": entry.get("no_name", ""),
@@ -1328,6 +1335,31 @@ def _rebuild_poly_ml_cache() -> None:
 
     fetched_at = latest_update.isoformat() if latest_update else utc_now()
     _poly_ml_cache = (markets, fetched_at)
+    _poly_ml_slot = slot
+
+
+def _patch_poly_ml_entry(slug: str, yes_ask: Optional[float], no_ask: Optional[float]) -> None:
+    """
+    O(1) in-place update of _poly_ml_cache markets for a single slug.
+    Patches ask and taker_fee on the existing YES/NO slot entries.
+    Falls back to full rebuild if the slug isn't indexed (new market since last seed).
+    Must be called while holding _poly_ws_lock.
+    """
+    global _poly_ml_cache
+    if slug not in _poly_ml_slot:
+        _rebuild_poly_ml_cache()
+        return
+    markets, _ = _poly_ml_cache
+    slots = _poly_ml_slot[slug]
+    if yes_ask is not None and "yes" in slots:
+        m = markets[slots["yes"]]
+        m["ask"] = yes_ask
+        m["taker_fee"] = round(yes_ask * POLYMARKET_TAKER_FEE_RATE, 6)
+    if no_ask is not None and "no" in slots:
+        m = markets[slots["no"]]
+        m["ask"] = no_ask
+        m["taker_fee"] = round(no_ask * POLYMARKET_TAKER_FEE_RATE, 6)
+    _poly_ml_cache = (markets, utc_now())
 
 
 def _reconstruct_poly_props_list() -> list[dict]:
@@ -1426,7 +1458,7 @@ async def _handle_poly_ws_message(data: dict) -> None:
                 if no_ask is not None:
                     entry["no_ask"] = no_ask
                 entry["updated_at"] = now
-                _rebuild_poly_ml_cache()
+                _patch_poly_ml_entry(slug, yes_ask, no_ask)
                 is_ml = True
             elif slug in _poly_ws_props_token_map:
                 entry = _poly_ws_props_token_map[slug]
