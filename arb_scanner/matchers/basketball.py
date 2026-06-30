@@ -87,10 +87,11 @@ def teams_from_kalshi_title(title: str) -> Optional[tuple[str, str]]:
                 return a, b
     return None
 
-def _kalshi_game_dt(ticker: str) -> Optional[datetime]:
+def _kalshi_game_dt_utc(ticker: str) -> Optional[datetime]:
     try:
         segment = ticker.split("-")[1]
-        return datetime.strptime(segment[:11], "%y%b%d%H%M")  # naive ET time
+        dt_naive = datetime.strptime(segment[:11], "%y%b%d%H%M")
+        return dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc)
     except (IndexError, ValueError):
         return None
 
@@ -114,7 +115,9 @@ class BasketballMatcher(BaseMatcher):
                 continue
             team_a, team_b = teams_k
 
-            k_game_dt = _kalshi_game_dt(km.get("ticker", ""))
+            k_game_dt_utc = _kalshi_game_dt_utc(km.get("ticker", ""))
+            if k_game_dt_utc is None:
+                continue
 
             for pm in polymarket_markets:
                 pm_code = team_code(pm.get("team_abbr", "") or pm.get("team", ""))
@@ -127,15 +130,13 @@ class BasketballMatcher(BaseMatcher):
                 else:
                     continue
 
-                if k_game_dt is not None:
-                    try:
-                        p_start = pm.get("raw", {}).get("gameStartTime", "")
-                        p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
-                        k_game_dt_utc = k_game_dt.replace(tzinfo=_ET).astimezone(timezone.utc)
-                        if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
-                            continue
-                    except (ValueError, AttributeError):
-                        pass
+                try:
+                    p_start = pm.get("raw", {}).get("gameStartTime", "")
+                    p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
+                    if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
+                        continue
+                except (ValueError, AttributeError):
+                    pass
 
                 k_ask = km.get("ask", 0.0)
                 p_ask = pm.get("ask", 0.0)

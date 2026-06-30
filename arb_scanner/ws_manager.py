@@ -202,6 +202,8 @@ def teams_from_kalshi_market(market: dict) -> Optional[tuple[str, str]]:
     return teams_from_kalshi_title(title)
 
 
+# Used only by today_tickers() for date-range filtering (date() comparison only).
+# Intentionally NOT ET-corrected — a 4-5h UTC error is irrelevant at date granularity.
 def _kalshi_game_dt(ticker: str) -> Optional[datetime]:
     try:
         segment = ticker.split("-")[1]
@@ -568,8 +570,8 @@ def match_markets(kalshi_markets: list[dict], polymarket_markets: list[dict]) ->
         if k_team not in (team_a, team_b):
             continue
         opponent = team_b if k_team == team_a else team_a
-        k_game_dt = _kalshi_game_dt(km["ticker"])
-        if k_game_dt is None:
+        k_game_dt_utc = _kalshi_game_dt_utc(km["ticker"])
+        if k_game_dt_utc is None:
             continue
         for poly_opp in poly_by_team.get(opponent, []):
             p_start = poly_opp["raw"].get("gameStartTime", "")
@@ -577,7 +579,6 @@ def match_markets(kalshi_markets: list[dict], polymarket_markets: list[dict]) ->
                 p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
                 continue
-            k_game_dt_utc = k_game_dt.replace(tzinfo=_ET).astimezone(timezone.utc)
             if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
                 continue
             poly_kteam_sides = [

@@ -29,7 +29,7 @@ from matchers.baseball import (
     team_code,
     teams_from_kalshi_title,
     teams_from_kalshi_market,
-    _kalshi_game_dt,
+    _kalshi_game_dt_utc,
 )
 
 ARB_THRESHOLD = 0.96
@@ -675,70 +675,48 @@ class TestAliasCovers30Teams(unittest.TestCase):
 
 class TestDateTimeOffset(unittest.TestCase):
     """
-    7: Verify the ET→UTC conversion and _kalshi_game_dt behavior.
+    7: Verify the ET→UTC conversion in _kalshi_game_dt_utc.
 
-    Live code uses a hardcoded +4h offset (EDT, summer).
-    During EST (winter, UTC-5), the correct offset would be +5h.
-    This is a documented risk; this suite confirms current behavior and the edge.
+    Uses ZoneInfo("America/New_York") (DST-aware), so summer (EDT=UTC-4)
+    and winter (EST=UTC-5) games both convert correctly.
     """
 
-    def test_D01_kalshi_game_dt_parses_correctly(self):
-        """_kalshi_game_dt extracts datetime from segment[1][:11]."""
+    def test_D01_summer_edt_converts_to_utc(self):
+        """Summer: 2026-06-30 19:05 ET (EDT = UTC-4) → 23:05 UTC same day."""
         ticker = "KXMLBGAME-26JUN301905DETNYY-DET"
-        dt = _kalshi_game_dt(ticker)
-        self.assertIsNotNone(dt)
-        self.assertEqual(dt.year, 2026)
-        self.assertEqual(dt.month, 6)
-        self.assertEqual(dt.day, 30)
-        self.assertEqual(dt.hour, 19)
-        self.assertEqual(dt.minute, 5)
-
-    def test_D02_hardcoded_plus4h_is_correct_for_summer_edt(self):
-        """
-        Summer (EDT = UTC-4): adding 4h to the parsed ET time gives UTC.
-        Kalshi 19:05 ET → UTC 23:05 on same day.
-        """
-        ticker = "KXMLBGAME-26JUN301905DETNYY-DET"
-        dt_et = _kalshi_game_dt(ticker)
-        dt_utc = dt_et + timedelta(hours=4)
+        dt_utc = _kalshi_game_dt_utc(ticker)
+        self.assertIsNotNone(dt_utc)
+        self.assertEqual(dt_utc.tzinfo, timezone.utc)
+        self.assertEqual(dt_utc.year, 2026)
+        self.assertEqual(dt_utc.month, 6)
+        self.assertEqual(dt_utc.day, 30)
         self.assertEqual(dt_utc.hour, 23)
         self.assertEqual(dt_utc.minute, 5)
 
-    def test_D03_zoneinfo_dst_aware_summer_and_winter(self):
-        """
-        The live code uses ZoneInfo("America/New_York") (DST-aware), NOT a hardcoded +4h.
-        Verify that _kalshi_game_dt() + replace(tzinfo=_ET).astimezone(UTC) gives
-        correct UTC for both a summer (EDT, UTC-4) and winter (EST, UTC-5) game.
-        """
-        from zoneinfo import ZoneInfo
-        from matchers.baseball import _kalshi_game_dt
-        _ET = ZoneInfo("America/New_York")
+    def test_D02_winter_est_converts_to_utc(self):
+        """Winter: 2026-01-15 13:05 ET (EST = UTC-5) → 18:05 UTC same day."""
+        ticker = "KXMLBGAME-26JAN151305BOSNYY-BOS"
+        dt_utc = _kalshi_game_dt_utc(ticker)
+        self.assertIsNotNone(dt_utc)
+        self.assertEqual(dt_utc.tzinfo, timezone.utc)
+        self.assertEqual(dt_utc.hour, 18)
+        self.assertEqual(dt_utc.minute, 5)
+        self.assertEqual(dt_utc.day, 15)
 
-        # Summer: 2026-06-30 19:05 ET (EDT = UTC-4) → 23:05 UTC same day
-        summer_ticker = "KXMLBGAME-26JUN301905DETNYY-DET"
-        dt_summer = _kalshi_game_dt(summer_ticker)
-        self.assertIsNotNone(dt_summer)
-        utc_summer = dt_summer.replace(tzinfo=_ET).astimezone(timezone.utc)
-        self.assertEqual(utc_summer.hour, 23)
-        self.assertEqual(utc_summer.minute, 5)
-        self.assertEqual(utc_summer.day, 30)
-
-        # Winter: 2026-01-15 13:05 ET (EST = UTC-5) → 18:05 UTC same day
-        winter_ticker = "KXMLBGAME-26JAN151305BOSNYY-BOS"
-        dt_winter = _kalshi_game_dt(winter_ticker)
-        self.assertIsNotNone(dt_winter, "Winter ticker must parse correctly")
-        utc_winter = dt_winter.replace(tzinfo=_ET).astimezone(timezone.utc)
-        self.assertEqual(utc_winter.hour, 18)
-        self.assertEqual(utc_winter.minute, 5)
-        self.assertEqual(utc_winter.day, 15)
+    def test_D03_result_is_utc_aware(self):
+        """_kalshi_game_dt_utc always returns a UTC-aware datetime."""
+        ticker = "KXMLBGAME-26JUN301905DETNYY-DET"
+        dt_utc = _kalshi_game_dt_utc(ticker)
+        self.assertIsNotNone(dt_utc)
+        self.assertEqual(dt_utc.tzinfo, timezone.utc)
 
     def test_D04_no_separator_ticker_returns_none(self):
-        """Ticker with no '-' separator → _kalshi_game_dt returns None gracefully."""
-        self.assertIsNone(_kalshi_game_dt("KXMLBGAME"))
+        """Ticker with no '-' separator → _kalshi_game_dt_utc returns None gracefully."""
+        self.assertIsNone(_kalshi_game_dt_utc("KXMLBGAME"))
 
     def test_D05_malformed_segment_returns_none(self):
-        """Non-parseable segment → _kalshi_game_dt returns None (no crash)."""
-        self.assertIsNone(_kalshi_game_dt("KXMLBGAME-BADFORMAT-DET"))
+        """Non-parseable segment → _kalshi_game_dt_utc returns None (no crash)."""
+        self.assertIsNone(_kalshi_game_dt_utc("KXMLBGAME-BADFORMAT-DET"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
