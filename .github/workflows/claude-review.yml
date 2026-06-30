@@ -2,7 +2,7 @@ name: Claude PR Reviewer
 
 on:
   pull_request:
-    types: [opened] # Omitting 'synchronize' prevents running on every push
+    types: [opened]
   issue_comment:
     types: [created]
 
@@ -13,12 +13,20 @@ permissions:
 
 jobs:
   review:
-    # Only run on new PRs, or if someone explicitly comments "@claude review"
     if: >
-      github.event_name == 'pull_request' || 
+      github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude review'))
     runs-on: ubuntu-latest
     steps:
-      - uses: drillan/claude-pr-reviewer@v1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+            Review this PR for bugs, security issues, and code quality. Be specific and actionable.
