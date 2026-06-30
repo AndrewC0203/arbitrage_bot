@@ -753,17 +753,30 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
     return matches
 
 
-def _log_arb(arb: dict, timestamp: str) -> None:
-    with open(LOG_FILE, "a") as f:
-        f.write(json.dumps({"event": "prop_arb", "timestamp": timestamp, **arb}) + "\n")
+def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
+    """Print and log prop arbs, skipping any whose prices haven't changed since last emit.
+    Evicts stale keys so an arb that disappears and returns will re-emit."""
+    active_keys = {(a["kalshi_ticker"], a["direction"]) for a in arbs}
+    for stale in set(_last_arb_prices) - active_keys:
+        del _last_arb_prices[stale]
 
+    new_arbs = []
+    for arb in arbs:
+        key = (arb["kalshi_ticker"], arb["direction"])
+        price_sig = (arb["leg1_ask"], arb["leg2_ask"])
+        if _last_arb_prices.get(key) == price_sig:
+            continue
+        _last_arb_prices[key] = price_sig
+        new_arbs.append(arb)
 
-def _print_arbs(arbs: list[dict], timestamp: str) -> None:
+    if not new_arbs:
+        return
+
     print(f"\n{'='*70}")
     print(f"  PROP ARB FOUND — {timestamp}")
     print(f"{'='*70}")
     current_game = None
-    for arb in arbs:
+    for arb in new_arbs:
         if arb["event_title"] != current_game:
             current_game = arb["event_title"]
             print(f"\n--- {arb['event_title']} ({arb['game_start']}) ---")
@@ -775,6 +788,10 @@ def _print_arbs(arbs: list[dict], timestamp: str) -> None:
             f"${arb['total_cost']:.2f}"
         )
         print(f"         Kalshi: {arb['kalshi_ticker']}")
+
+    with open(LOG_FILE, "a") as f:
+        for arb in new_arbs:
+            f.write(json.dumps({"event": "prop_arb", "timestamp": timestamp, **arb}) + "\n")
 
 
 # ─── REST Fetch Functions ──────────────────────────────────────────────────────
@@ -989,6 +1006,8 @@ _poly_ws_props_token_map: dict[str, dict] = {}
 _poly_ws_lock = asyncio.Lock()
 _last_status_log: float = 0.0   # epoch seconds; status lines throttled to once per 60s
 _STATUS_LOG_INTERVAL = 60
+# keyed by (kalshi_ticker, direction); value is (leg1_ask, leg2_ask) last printed/logged
+_last_arb_prices: dict[tuple, tuple] = {}
 
 
 def _next_id() -> int:
@@ -1241,9 +1260,7 @@ async def _poly_props_polling_task() -> None:
         arbs = match_props(kalshi_props, poly_props)
 
         if arbs:
-            _print_arbs(arbs, timestamp)
-            for arb in arbs:
-                _log_arb(arb, timestamp)
+            _emit_prop_arbs(arbs, timestamp)
         else:
             if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
                 _last_status_log = time.time()
@@ -1494,9 +1511,7 @@ def _run_props_arb_check_from_ws() -> None:
     arbs = match_props(kalshi_props, poly_props)
     timestamp = now_utc.isoformat()
     if arbs:
-        _print_arbs(arbs, timestamp)
-        for arb in arbs:
-            _log_arb(arb, timestamp)
+        _emit_prop_arbs(arbs, timestamp)
     else:
         global _last_status_log
         if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
