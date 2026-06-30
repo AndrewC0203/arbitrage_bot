@@ -70,7 +70,7 @@ SPORTS_CONFIGS = [
     },
     {
         "name": "Tennis",
-        "kalshi_tickers": ["KXATP", "KXWTA"],
+        "kalshi_tickers": ["KXATPMATCH", "KXWTAMATCH"],
         "poly_slugs": ["atp", "wta"],
         "poly_smt": "tennis_match_winner",
         "matcher_cls": TennisMatcher,
@@ -931,7 +931,10 @@ async def fetch_polymarket(session: aiohttp.ClientSession) -> tuple[list[dict], 
                         if not team_abbr:
                             team_abbr = side.get("participant", "")
                         team_abbr = team_abbr.lower()
-                        
+                        team_name = normalize_name(
+                            team.get("displayName", "") or team.get("name", "") or team_abbr
+                        )
+
                         quote = side.get("quote", {})
                         ask = float(quote.get("value", 0)) if quote else 0.0
                         if ask <= 0 or ask >= 1:
@@ -941,6 +944,7 @@ async def fetch_polymarket(session: aiohttp.ClientSession) -> tuple[list[dict], 
                             "slug": m.get("slug", ""),
                             "title": m.get("question") or m.get("slug", ""),
                             "team_abbr": team_abbr,
+                            "team_name": team_name,
                             "ask": ask,
                             "taker_fee": taker_fee,
                             "raw": m,
@@ -1385,31 +1389,39 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
                         
                         yes_ask = no_ask = None
                         yes_abbr = no_abbr = None
+                        yes_name = no_name = None
                         for side in m.get("marketSides", []):
                             team = side.get("team", {})
                             abbr = team.get("abbreviation", "")
                             if not abbr:
                                 abbr = side.get("participant", "")
                             abbr = abbr.lower()
-                            
+                            display = normalize_name(
+                                team.get("displayName", "") or team.get("name", "") or abbr
+                            )
+
                             quote = side.get("quote") or {}
                             try:
                                 ask = float(quote.get("value", 0))
                             except (TypeError, ValueError):
                                 ask = 0.0
-                                
+
                             if side.get("long") is True:
                                 yes_ask = ask if 0 < ask < 1 else None
                                 yes_abbr = abbr
+                                yes_name = display
                             else:
                                 no_ask = ask if 0 < ask < 1 else None
                                 no_abbr = abbr
-                                
+                                no_name = display
+
                         _poly_ws_ml_token_map[slug_m] = {
                             "slug": slug_m,
                             "title": m.get("question") or slug_m,
                             "yes_abbr": yes_abbr,
                             "no_abbr": no_abbr,
+                            "yes_name": yes_name,
+                            "no_name": no_name,
                             "yes_ask": yes_ask,
                             "no_ask": no_ask,
                             "raw": m,
@@ -1516,6 +1528,7 @@ def _rebuild_poly_ml_cache() -> None:
                 "slug": entry["slug"],
                 "title": entry["title"],
                 "team_abbr": entry["yes_abbr"],
+                "team_name": entry.get("yes_name", ""),
                 "ask": yes_ask,
                 "taker_fee": round(yes_ask * POLYMARKET_TAKER_FEE_RATE, 6),
                 "raw": entry["raw"],
@@ -1527,6 +1540,7 @@ def _rebuild_poly_ml_cache() -> None:
                 "slug": entry["slug"],
                 "title": entry["title"],
                 "team_abbr": entry["no_abbr"],
+                "team_name": entry.get("no_name", ""),
                 "ask": no_ask,
                 "taker_fee": round(no_ask * POLYMARKET_TAKER_FEE_RATE, 6),
                 "raw": entry["raw"],
