@@ -26,9 +26,8 @@ import os
 import re
 import sys
 import time
-import unicodedata
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -41,7 +40,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from matchers.baseball import BaseballMatcher
+from matchers.baseball import (
+    BaseballMatcher,
+    normalize_name,
+    team_code,
+    teams_from_kalshi_title,
+    teams_from_kalshi_market,
+    kalshi_is_moneyline,
+    _kalshi_game_dt_utc,
+    _MONEYLINE_REJECT_KEYWORDS,
+    _ALIASES,
+    _ALIASES_SORTED,
+)
 from matchers.basketball import BasketballMatcher
 from matchers.soccer import SoccerMatcher
 from matchers.tennis import TennisMatcher
@@ -78,6 +88,7 @@ SPORTS_CONFIGS = [
 ]
 
 GLOBAL_MATCHERS = [cfg["matcher_cls"](arb_threshold=0.96) for cfg in SPORTS_CONFIGS]
+ALL_KALSHI_TICKERS = list({t for cfg in SPORTS_CONFIGS for t in cfg["kalshi_tickers"]})
 
 
 # ─── Config ────────────────────────────────────────────────────────────────────
@@ -107,14 +118,7 @@ SERIES_TO_SMT = {
     "KXNBA3PT": "basketball_player_threes",
 }
 
-_MONEYLINE_REJECT_KEYWORDS = [
-    "total", "over", "under", "o u", "spread", "run line", "runline",
-    "strikeout", "home run", "hits", "innings", "first", "last",
-    "prop", "player", "pitcher", "batter", "era", "save",
-    "shutout", "tied after", "winning after",
-]
-
-# ─── Helpers (inlined from scanner.py) ────────────────────────────────────────
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -123,139 +127,6 @@ def utc_now() -> str:
 def log_event(obj: dict) -> None:
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(obj) + "\n")
-
-
-def evaluate_cross_market_arb(
-    poly_price: float,
-    poly_size: int,
-    kalshi_price: float,
-    kalshi_size: int,
-) -> dict:
-    # Kalshi base fee: 0.07 * size * price * (1 - price)
-    # Polymarket sports fee: 0.03 * size * price * (1 - price)
-    bottleneck_size = min(poly_size, kalshi_size)
-
-    if poly_price + kalshi_price >= 1.0:
-        print(f"[ARB-EVAL] Warning: prices sum to {poly_price + kalshi_price:.4f} >= 1.0 — no arb possible", file=sys.stderr)
-
-    kalshi_fee    = 0.07 * bottleneck_size * kalshi_price * (1 - kalshi_price)
-    poly_fee      = 0.03 * bottleneck_size * poly_price   * (1 - poly_price)
-    total_capital = bottleneck_size * (poly_price + kalshi_price)
-    total_fees    = kalshi_fee + poly_fee
-    payout        = bottleneck_size * 1.00
-    net_ev        = payout - total_capital - total_fees
-    roi           = (net_ev / (total_capital + total_fees)) * 100 if (total_capital + total_fees) > 0 else 0.0
-    execute       = net_ev >= 0.0 and bottleneck_size > 0
-
-    result = {
-        "bottleneck_size":        bottleneck_size,
-        "total_capital_required": round(total_capital, 6),
-        "total_fees_paid":        round(total_fees, 6),
-        "net_ev_dollars":         round(net_ev, 6),
-        "roi_percentage":         round(roi, 4),
-        "execute":                execute,
-    }
-
-    ts = utc_now()
-    log_event({
-        "event":        "cross_market_arb_eval",
-        "timestamp":    ts,
-        "poly_price":   poly_price,
-        "poly_size":    poly_size,
-        "kalshi_price": kalshi_price,
-        "kalshi_size":  kalshi_size,
-        **result,
-    })
-
-    if execute:
-        print(
-            f"[{ts}][ARB-EVAL] size={bottleneck_size} capital=${total_capital:.2f} "
-            f"fees=${total_fees:.2f} ev={net_ev:+.2f} roi={roi:.1f}% EXECUTE=TRUE"
-        )
-    else:
-        print(
-            f"[{ts}][ARB-EVAL] ev={net_ev:+.2f} — spread is a trap. EXECUTE=FALSE",
-            file=sys.stderr,
-        )
-
-    return result
-
-
-def normalize_name(s: str) -> str:
-    s = unicodedata.normalize("NFD", s)
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9 ]+", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
-
-
-_ALIASES: list[tuple[str, str]] = [
-    ("arizona", "ari"), ("diamondbacks", "ari"),
-    ("atlanta", "atl"), ("braves", "atl"),
-    ("baltimore", "bal"), ("orioles", "bal"),
-    ("boston", "bos"), ("red sox", "bos"), ("redsox", "bos"),
-    ("chicago cubs", "chc"), ("cubs", "chc"),
-    ("chicago c", "chc"),
-    ("chicago white sox", "cws"), ("white sox", "cws"),
-    ("chicago ws", "cws"),
-    ("cincinnati", "cin"), ("reds", "cin"),
-    ("cleveland", "cle"), ("guardians", "cle"),
-    ("colorado", "col"), ("rockies", "col"),
-    ("detroit", "det"), ("tigers", "det"),
-    ("houston", "hou"), ("astros", "hou"),
-    ("kansas city", "kc"), ("royals", "kc"),
-    ("los angeles angels", "laa"), ("angels", "laa"),
-    ("los angeles a", "laa"),
-    ("los angeles dodgers", "lad"), ("dodgers", "lad"),
-    ("los angeles d", "lad"),
-    ("miami", "mia"), ("marlins", "mia"),
-    ("milwaukee", "mil"), ("brewers", "mil"),
-    ("minnesota", "min"), ("twins", "min"),
-    ("new york mets", "nym"), ("mets", "nym"),
-    ("new york m", "nym"),
-    ("new york yankees", "nyy"), ("yankees", "nyy"),
-    ("new york y", "nyy"),
-    ("oakland", "oak"), ("athletics", "oak"),
-    ("a s", "oak"),
-    ("philadelphia", "phi"), ("phillies", "phi"),
-    ("pittsburgh", "pit"), ("pirates", "pit"),
-    ("san diego", "sd"), ("padres", "sd"),
-    ("san francisco", "sf"), ("giants", "sf"),
-    ("seattle", "sea"), ("mariners", "sea"),
-    ("st. louis", "stl"), ("st louis", "stl"), ("cardinals", "stl"),
-    ("tampa bay", "tb"), ("rays", "tb"),
-    ("texas", "tex"), ("rangers", "tex"),
-    ("toronto", "tor"), ("blue jays", "tor"), ("bluejays", "tor"),
-    ("washington", "wsh"), ("nationals", "wsh"),
-]
-
-_ALIASES_SORTED = sorted(_ALIASES, key=lambda x: -len(x[0]))
-
-
-def team_code(text: str) -> Optional[str]:
-    t = normalize_name(text)
-    for alias, code in _ALIASES_SORTED:
-        if alias in t:
-            return code
-    return None
-
-
-def teams_from_kalshi_title(title: str) -> Optional[tuple[str, str]]:
-    clean = title.replace("@", " vs ")
-    normalized = normalize_name(clean)
-    for sep in [" vs ", " v ", " at "]:
-        parts = normalized.split(sep)
-        if len(parts) == 2:
-            a = team_code(parts[0])
-            b = team_code(parts[1])
-            if a and b:
-                return a, b
-    return None
-
-
-def teams_from_kalshi_market(market: dict) -> Optional[tuple[str, str]]:
-    title = market.get("title", "") or market.get("subtitle", "") or ""
-    return teams_from_kalshi_title(title)
 
 
 # Used only by today_tickers() for date-range filtering (date() comparison only).
@@ -268,39 +139,6 @@ def _kalshi_game_dt(ticker: str) -> Optional[datetime]:
         return None
 
 
-def kalshi_is_moneyline(market: dict) -> bool:
-    title = normalize_name((market.get("title", "") or "").replace("@", " vs "))
-    subtitle = normalize_name((market.get("subtitle", "") or "").replace("@", " vs "))
-    combined = title + " " + subtitle
-    for kw in _MONEYLINE_REJECT_KEYWORDS:
-        if kw in combined:
-            return False
-    accept_keywords = ["winner", "win", "moneyline", "beat", "defeat"]
-    if " vs " in combined or " at " in combined:
-        return True
-    for kw in accept_keywords:
-        if kw in combined:
-            return True
-    return False
-
-
-# ─── Helpers (inlined from props_scanner.py) ──────────────────────────────────
-
-def _normalize(s: str) -> str:
-    s = unicodedata.normalize("NFD", s)
-    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", s.lower())).strip()
-
-
-def _kalshi_game_dt_utc(ticker: str) -> Optional[datetime]:
-    try:
-        seg = ticker.split("-")[1]
-        dt_naive = datetime.strptime(seg[:11], "%y%b%d%H%M")
-        return dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc)
-    except (IndexError, ValueError):
-        return None
-
-
 def _kalshi_parse_title(title: str) -> Optional[tuple[str, int]]:
     m = re.match(r"^(.+?):\s*(\d+)\+", title)
     if not m:
@@ -309,23 +147,15 @@ def _kalshi_parse_title(title: str) -> Optional[tuple[str, int]]:
 
 
 def _kalshi_ask(market: dict, side: str) -> Optional[float]:
-    key = f"{side}_ask_dollars"
-    raw = market.get(key)
-    if raw is None:
-        key2 = f"{side}_ask"
-        raw2 = market.get(key2)
-        if raw2 is not None:
+    for field, scale in ((f"{side}_ask_dollars", 1.0), (f"{side}_ask", 100.0)):
+        raw = market.get(field)
+        if raw is not None:
             try:
-                val = float(raw2) / 100.0
+                val = float(raw) / scale
                 return val if 0 < val < 1 else None
             except (TypeError, ValueError):
                 return None
-        return None
-    try:
-        val = float(raw)
-        return val if 0 < val < 1 else None
-    except (TypeError, ValueError):
-        return None
+    return None
 
 
 def _poly_ask(side: dict) -> Optional[float]:
@@ -503,7 +333,7 @@ class KalshiOrderBook:
         self._best_ask[ticker] = min(positive) / 100.0 if positive else None
 
     def as_kalshi_markets(self, now: datetime) -> list[dict]:
-        """Return normalized market dicts in the format match_markets() expects."""
+        """Return normalized market dicts in the format matcher.match() expects."""
         stale_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
         result = []
         for ticker, meta in self._metadata.items():
@@ -536,8 +366,8 @@ class KalshiPriceCache:
         self._cache_date: Optional["datetime.date"] = None
 
     def update_from_ws(self, ticker: str, msg: dict) -> None:
-        raw_yes = msg.get("yes_ask") if msg.get("yes_ask") is not None else msg.get("yes_ask_dollars")
-        raw_no  = msg.get("no_ask")  if msg.get("no_ask")  is not None else msg.get("no_ask_dollars")
+        raw_yes = msg["yes_ask"] if "yes_ask" in msg else msg.get("yes_ask_dollars")
+        raw_no  = msg["no_ask"]  if "no_ask"  in msg else msg.get("no_ask_dollars")
         yes_ask = self._parse_price(raw_yes)
         no_ask  = self._parse_price(raw_no)
         if ticker not in self._cache:
@@ -607,60 +437,7 @@ class KalshiPriceCache:
             return None
 
 
-# ─── Arb Logic (inlined from scanner.py / props_scanner.py) ───────────────────
-
-def match_markets(kalshi_markets: list[dict], polymarket_markets: list[dict]) -> list[dict]:
-    poly_by_team: dict[str, list[dict]] = {}
-    for pm in polymarket_markets:
-        poly_by_team.setdefault(pm["team_abbr"], []).append(pm)
-
-    matches = []
-    for km in kalshi_markets:
-        teams = teams_from_kalshi_market(km["raw"])
-        if teams is None:
-            continue
-        team_a, team_b = teams
-        k_team = km["ticker"].split("-")[-1].lower()
-        if k_team not in (team_a, team_b):
-            continue
-        opponent = team_b if k_team == team_a else team_a
-        k_game_dt_utc = _kalshi_game_dt_utc(km["ticker"])
-        if k_game_dt_utc is None:
-            continue
-        for poly_opp in poly_by_team.get(opponent, []):
-            p_start = poly_opp["raw"].get("gameStartTime", "")
-            try:
-                p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                continue
-            if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
-                continue
-            poly_kteam_sides = [
-                p for p in poly_by_team.get(k_team, []) if p["slug"] == poly_opp["slug"]
-            ]
-            if not poly_kteam_sides:
-                continue
-            k_ask = km["ask"]
-            p_ask = poly_opp["ask"]
-            k_fee = km["taker_fee"]
-            p_fee = poly_opp["taker_fee"]
-            total_cost = k_ask + p_ask + k_fee + p_fee
-            matches.append({
-                "market_name": km["title"],
-                "kalshi_ticker": km["ticker"],
-                "kalshi_team": k_team,
-                "kalshi_ask": round(k_ask, 6),
-                "kalshi_taker_fee": round(k_fee, 6),
-                "polymarket_slug": poly_opp["slug"],
-                "polymarket_team": opponent,
-                "polymarket_ask": round(p_ask, 6),
-                "polymarket_taker_fee": round(p_fee, 6),
-                "total_cost": round(total_cost, 6),
-                "gap_cents": round((ARB_THRESHOLD - total_cost) * 100, 4),
-                "is_arb": total_cost < ARB_THRESHOLD,
-            })
-    return matches
-
+# ─── Arb Logic ────────────────────────────────────────────────────────────────
 
 class OpportunityTracker:
     def __init__(self):
@@ -854,11 +631,7 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
 async def fetch_kalshi(session: aiohttp.ClientSession) -> tuple[list[dict], str]:
     markets = []
     fetched_at = utc_now()
-    tickers = []
-    for cfg in SPORTS_CONFIGS:
-        tickers.extend(cfg["kalshi_tickers"])
-        
-    for ticker in set(tickers):
+    for ticker in ALL_KALSHI_TICKERS:
         url = f"{KALSHI_BASE}/markets"
         params = {"series_ticker": ticker, "status": "open", "limit": 200}
         try:
@@ -984,7 +757,7 @@ def fetch_kalshi_props(today_utc: "datetime.date") -> list[dict]:
                 "series": series,
                 "ticker": ticker,
                 "player_name": player_name,
-                "player_norm": _normalize(player_name),
+                "player_norm": normalize_name(player_name),
                 "line": line,
                 "yes_ask": yes_ask,
                 "no_ask": no_ask,
@@ -1008,7 +781,6 @@ def fetch_poly_props(today_str: str) -> list[dict]:
             pass
 
     supported_smts = set(SERIES_TO_SMT.values())
-    from datetime import date
     today = date.fromisoformat(today_str)
     valid_dates = {today_str, (today - timedelta(days=1)).isoformat()}
 
@@ -1040,7 +812,7 @@ def fetch_poly_props(today_str: str) -> list[dict]:
             results.append({
                 "smt": smt,
                 "player_name": player_name,
-                "player_norm": _normalize(player_name),
+                "player_norm": normalize_name(player_name),
                 "line": m.get("line"),
                 "yes_ask": yes_ask,
                 "no_ask": no_ask,
@@ -1183,14 +955,12 @@ def _handle_ws_message(data: dict) -> bool:
 # ─── Kalshi WS Task (single connection, both channels) ────────────────────────
 
 async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
-    backoff    = 1
-    _pkey      = private_key
-    private_key = None  # drop outer reference after handoff
+    backoff = 1
 
     while True:
         try:
-            auth_headers = _ws_auth_headers(api_key_id, _pkey)
-            _pkey = None  # clear after signing; reloaded on reconnect
+            auth_headers = _ws_auth_headers(api_key_id, private_key)
+            private_key = None  # reload on reconnect via _load_ws_credentials
 
             async with websockets.connect(
                 KALSHI_WS_URL, additional_headers=auth_headers
@@ -1233,7 +1003,6 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                     new_today = datetime.now(timezone.utc).date()
                     if new_today != today:
                         today = new_today
-                        _order_book._metadata  # keep existing metadata
                         _price_cache.purge_old_date(today)
                         new_ml   = _order_book.today_tickers(today)
                         new_prop = _price_cache.today_tickers(today)
@@ -1252,12 +1021,12 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30)
 
-            if _pkey is None:
+            if private_key is None:
                 creds = _load_ws_credentials()
                 if creds is None:
                     print("[ERROR] Cannot reload Kalshi credentials for reconnect.", file=sys.stderr)
                     return
-                _, _pkey = creds
+                _, private_key = creds
 
 
 # ─── Polymarket Polling Tasks ─────────────────────────────────────────────────
@@ -1435,8 +1204,7 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
     loop = asyncio.get_running_loop()
     today_str = now.date().strftime("%Y-%m-%d")
     supported_smts = set(SERIES_TO_SMT.values())
-    from datetime import date as _date
-    today = _date.fromisoformat(today_str)
+    today = date.fromisoformat(today_str)
     valid_dates = {today_str, (today - timedelta(days=1)).isoformat()}
 
     try:
@@ -1444,7 +1212,7 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
             events = []
             for q in ["mlb will record at least", "nba will record", "player points", "player rebounds"]:
                 try:
-                    resp = __import__("requests").get(
+                    resp = requests.get(
                         f"{POLYMARKET_US_GATEWAY}/v1/search",
                         params={"query": q, "limit": 200},
                         timeout=REST_TIMEOUT,
@@ -1486,7 +1254,7 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
                     _poly_ws_props_token_map[slug] = {
                         "smt": smt,
                         "player_name": player_name,
-                        "player_norm": _normalize(player_name),
+                        "player_norm": normalize_name(player_name),
                         "line": m.get("line"),
                         "game_start": game_start,
                         "event_title": event_title,
@@ -1506,7 +1274,7 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
 def _rebuild_poly_ml_cache() -> None:
     """
     Rebuild _poly_ml_cache from _poly_ws_ml_token_map (slug-keyed).
-    Emits one entry per side (YES team / NO team) in the format match_markets() consumes.
+    Emits one entry per side (YES team / NO team) in the format matcher.match() consumes.
     Must be called while holding _poly_ws_lock (or before WS task starts).
     """
     global _poly_ml_cache

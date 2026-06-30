@@ -56,7 +56,6 @@ is_arb  = total_cost < ARB_THRESHOLD (0.96)
 
 1. **Moneyline**: Kalshi YES (team A) + Polymarket YES (team B). Arb when `total_cost < 0.96`.
 2. **Props**: Match by `(smt, player_norm, line, game_date)`. YES one side + NO other; same formula.
-3. **Value plays**: Polymarket MLB spread/total markets where both sides < 0.96 (REST seed only, not WS).
 
 ### Sports Configs
 
@@ -65,7 +64,7 @@ is_arb  = total_cost < ARB_THRESHOLD (0.96)
 | MLB    | KXMLBGAME                 | mlb                        | BaseballMatcher   |
 | NBA    | KXNBA, KXWNBA, KXCBB      | nba, wnba, ncaab           | BasketballMatcher |
 | Soccer | KXEPL, KXMLS, KXCHAMPIONS | epl, mls, champions-league | SoccerMatcher     |
-| Tennis | KXATP, KXWTA              | atp, wta                   | TennisMatcher     |
+| Tennis | KXATPMATCH, KXWTAMATCH    | atp, wta                   | TennisMatcher     |
 
 ### Key Constants
 
