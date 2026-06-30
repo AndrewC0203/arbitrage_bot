@@ -1,0 +1,3264 @@
+{
+  "kalshi_count": 111,
+  "polymarket_count": 290,
+  "match_count": 0,
+  "arb_count": 0,
+  "matches": [],
+  "unmatched_kalshi": [
+    {
+      "ticker": "KXATP-26USO-ZVE",
+      "title": "Will Alexander Zverev win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-VAC",
+      "title": "Will Valentin Vacherot win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-TSI",
+      "title": "Will Stefanos Tsitsipas win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-TIE",
+      "title": "Will Learner Tien win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-TIA",
+      "title": "Will Frances Tiafoe win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-STR",
+      "title": "Will Jan-Lennard Struff win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-SIN",
+      "title": "Will Jannik Sinner win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-SHE",
+      "title": "Will Ben Shelton win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-RUU",
+      "title": "Will Casper Ruud win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-RUN",
+      "title": "Will Holger Rune win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-RUB",
+      "title": "Will Andrey Rublev win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-PRI",
+      "title": "Will Dino Prizmic win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-PAU",
+      "title": "Will Tommy Paul win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-NOR",
+      "title": "Will Cameron Norrie win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-MUS",
+      "title": "Will Lorenzo Musetti win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-MEN",
+      "title": "Will Jakub Mensik win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-MED",
+      "title": "Will Daniil Medvedev win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-KOR",
+      "title": "Will Sebastian Korda win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-KHA",
+      "title": "Will Karen Khachanov win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-JOD",
+      "title": "Will Rafael Jodar win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-HUR",
+      "title": "Will Hubert Hurkacz win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-FRI",
+      "title": "Will Taylor Fritz win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-FON",
+      "title": "Will Joao Fonseca win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-FIL",
+      "title": "Will Arthur Fils win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-DRA",
+      "title": "Will Jack Draper win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-DJO",
+      "title": "Will Novak Djokovic win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-DIA",
+      "title": "Will Gabriel Diallo win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-DE",
+      "title": "Will Alex de Minaur win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-COB",
+      "title": "Will Flavio Cobolli win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-CER",
+      "title": "Will Francisco Cerundolo win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-BUB",
+      "title": "Will Alexander Bublik win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-AUG",
+      "title": "Will Felix Auger-Aliassime win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26USO-ALC",
+      "title": "Will Carlos Alcaraz win the US Open Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-ZVE",
+      "title": "Will Alexander Zverev win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-VAC",
+      "title": "Will Valentin Vacherot win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-TSI",
+      "title": "Will Stefanos Tsitsipas win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-TIE",
+      "title": "Will Learner Tien win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-TIA",
+      "title": "Will Frances Tiafoe win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-STR",
+      "title": "Will Jan-Lennard Struff win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-SIN",
+      "title": "Will Jannik Sinner win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-SHE",
+      "title": "Will Ben Shelton win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-RUU",
+      "title": "Will Casper Ruud win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-RUN",
+      "title": "Will Holger Rune win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-RUB",
+      "title": "Will Andrey Rublev win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-PRI",
+      "title": "Will Dino Prizmic win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-PAU",
+      "title": "Will Tommy Paul win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-NOR",
+      "title": "Will Cameron Norrie win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-MUS",
+      "title": "Will Lorenzo Musetti win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-MEN",
+      "title": "Will Jakub Mensik win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-MED",
+      "title": "Will Daniil Medvedev win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-KOR",
+      "title": "Will Sebastian Korda win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-KHA",
+      "title": "Will Karen Khachanov win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-JOD",
+      "title": "Will Rafael Jodar win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-HUR",
+      "title": "Will Hubert Hurkacz win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-FRI",
+      "title": "Will Taylor Fritz win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-FON",
+      "title": "Will Joao Fonseca win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-FIL",
+      "title": "Will Arthur Fils win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-DRA",
+      "title": "Will Jack Draper win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-DJO",
+      "title": "Will Novak Djokovic win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-DIA",
+      "title": "Will Gabriel Diallo win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-DE",
+      "title": "Will Alex de Minaur win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-COB",
+      "title": "Will Flavio Cobolli win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-CER",
+      "title": "Will Francisco Cerundolo win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-BUB",
+      "title": "Will Alexander Bublik win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXATP-26WIM-AUG",
+      "title": "Will Felix Auger-Aliassime win the Wimbledon Men's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-RAD",
+      "title": "Will Emma Raducanu win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-WIL",
+      "title": "Will Serena Williams win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-ZHE",
+      "title": "Will Qinwen Zheng win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-SWI",
+      "title": "Will Iga Swiatek win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-SVI",
+      "title": "Will Elina Svitolina win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-SAK",
+      "title": "Will Maria Sakkari win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-SAB",
+      "title": "Will Aryna Sabalenka win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-RYB",
+      "title": "Will Elena Rybakina win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-PEG",
+      "title": "Will Jessica Pegula win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-PAO",
+      "title": "Will Jasmine Paolini win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-OST",
+      "title": "Will Jelena Ostapenko win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-OSA",
+      "title": "Will Naomi Osaka win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-NAV",
+      "title": "Will Emma Navarro win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-MUC",
+      "title": "Will Karolina Muchova win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-MBO",
+      "title": "Will Victoria Mboko win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-KRE",
+      "title": "Will Barbora Krejcikova win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-KOS",
+      "title": "Will Marta Kostyuk win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-KEY",
+      "title": "Will Madison Keys win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-JOV",
+      "title": "Will Iva Jovic win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-GAU",
+      "title": "Will Coco Gauff win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-CHW",
+      "title": "Will Maja Chwalinska win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-BAD",
+      "title": "Will Paula Badosa win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-ANI",
+      "title": "Will Amanda Anisimova win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26USO-AND",
+      "title": "Will Mirra Andreeva win the US Open Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-ZHE",
+      "title": "Will Qinwen Zheng win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-SWI",
+      "title": "Will Iga Swiatek win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-SVI",
+      "title": "Will Elina Svitolina win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-SAK",
+      "title": "Will Maria Sakkari win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-SAB",
+      "title": "Will Aryna Sabalenka win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-RYB",
+      "title": "Will Elena Rybakina win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-PEG",
+      "title": "Will Jessica Pegula win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-PAO",
+      "title": "Will Jasmine Paolini win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-OST",
+      "title": "Will Jelena Ostapenko win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-OSA",
+      "title": "Will Naomi Osaka win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-NAV",
+      "title": "Will Emma Navarro win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-MUC",
+      "title": "Will Karolina Muchova win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-MBO",
+      "title": "Will Victoria Mboko win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-KRE",
+      "title": "Will Barbora Krejcikova win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-KOS",
+      "title": "Will Marta Kostyuk win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-KEY",
+      "title": "Will Madison Keys win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-JOV",
+      "title": "Will Iva Jovic win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-GAU",
+      "title": "Will Coco Gauff win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-CHW",
+      "title": "Will Maja Chwalinska win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-BAD",
+      "title": "Will Paula Badosa win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-ANI",
+      "title": "Will Amanda Anisimova win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    },
+    {
+      "ticker": "KXWTA-26WIM-AND",
+      "title": "Will Mirra Andreeva win the Wimbledon Women's Singles?",
+      "reason": "no players extracted"
+    }
+  ],
+  "kalshi_raw": [
+    {
+      "ticker": "KXATP-26USO-ZVE",
+      "title": "Will Alexander Zverev win the US Open Men's Singles?",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "ticker": "KXATP-26USO-VAC",
+      "title": "Will Valentin Vacherot win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-TSI",
+      "title": "Will Stefanos Tsitsipas win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-TIE",
+      "title": "Will Learner Tien win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-TIA",
+      "title": "Will Frances Tiafoe win the US Open Men's Singles?",
+      "ask": 0.08,
+      "taker_fee": 0.0008
+    },
+    {
+      "ticker": "KXATP-26USO-STR",
+      "title": "Will Jan-Lennard Struff win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-SIN",
+      "title": "Will Jannik Sinner win the US Open Men's Singles?",
+      "ask": 0.49,
+      "taker_fee": 0.0049
+    },
+    {
+      "ticker": "KXATP-26USO-SHE",
+      "title": "Will Ben Shelton win the US Open Men's Singles?",
+      "ask": 0.07,
+      "taker_fee": 0.0007
+    },
+    {
+      "ticker": "KXATP-26USO-RUU",
+      "title": "Will Casper Ruud win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-RUN",
+      "title": "Will Holger Rune win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-RUB",
+      "title": "Will Andrey Rublev win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-PRI",
+      "title": "Will Dino Prizmic win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-PAU",
+      "title": "Will Tommy Paul win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-NOR",
+      "title": "Will Cameron Norrie win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-MUS",
+      "title": "Will Lorenzo Musetti win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-MEN",
+      "title": "Will Jakub Mensik win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-MED",
+      "title": "Will Daniil Medvedev win the US Open Men's Singles?",
+      "ask": 0.05,
+      "taker_fee": 0.0005
+    },
+    {
+      "ticker": "KXATP-26USO-KOR",
+      "title": "Will Sebastian Korda win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-KHA",
+      "title": "Will Karen Khachanov win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-JOD",
+      "title": "Will Rafael Jodar win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-HUR",
+      "title": "Will Hubert Hurkacz win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-FRI",
+      "title": "Will Taylor Fritz win the US Open Men's Singles?",
+      "ask": 0.06,
+      "taker_fee": 0.0006
+    },
+    {
+      "ticker": "KXATP-26USO-FON",
+      "title": "Will Joao Fonseca win the US Open Men's Singles?",
+      "ask": 0.03,
+      "taker_fee": 0.0003
+    },
+    {
+      "ticker": "KXATP-26USO-FIL",
+      "title": "Will Arthur Fils win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-DRA",
+      "title": "Will Jack Draper win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-DJO",
+      "title": "Will Novak Djokovic win the US Open Men's Singles?",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "ticker": "KXATP-26USO-DIA",
+      "title": "Will Gabriel Diallo win the US Open Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26USO-DE",
+      "title": "Will Alex de Minaur win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-COB",
+      "title": "Will Flavio Cobolli win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-CER",
+      "title": "Will Francisco Cerundolo win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-BUB",
+      "title": "Will Alexander Bublik win the US Open Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26USO-AUG",
+      "title": "Will Felix Auger-Aliassime win the US Open Men's Singles?",
+      "ask": 0.05,
+      "taker_fee": 0.0005
+    },
+    {
+      "ticker": "KXATP-26USO-ALC",
+      "title": "Will Carlos Alcaraz win the US Open Men's Singles?",
+      "ask": 0.27,
+      "taker_fee": 0.0027
+    },
+    {
+      "ticker": "KXATP-26WIM-ZVE",
+      "title": "Will Alexander Zverev win the Wimbledon Men's Singles?",
+      "ask": 0.07,
+      "taker_fee": 0.0007
+    },
+    {
+      "ticker": "KXATP-26WIM-VAC",
+      "title": "Will Valentin Vacherot win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-TSI",
+      "title": "Will Stefanos Tsitsipas win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-TIE",
+      "title": "Will Learner Tien win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-TIA",
+      "title": "Will Frances Tiafoe win the Wimbledon Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26WIM-STR",
+      "title": "Will Jan-Lennard Struff win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-SIN",
+      "title": "Will Jannik Sinner win the Wimbledon Men's Singles?",
+      "ask": 0.59,
+      "taker_fee": 0.0059
+    },
+    {
+      "ticker": "KXATP-26WIM-SHE",
+      "title": "Will Ben Shelton win the Wimbledon Men's Singles?",
+      "ask": 0.06,
+      "taker_fee": 0.0006
+    },
+    {
+      "ticker": "KXATP-26WIM-RUU",
+      "title": "Will Casper Ruud win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-RUN",
+      "title": "Will Holger Rune win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-RUB",
+      "title": "Will Andrey Rublev win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-PRI",
+      "title": "Will Dino Prizmic win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-PAU",
+      "title": "Will Tommy Paul win the Wimbledon Men's Singles?",
+      "ask": 0.03,
+      "taker_fee": 0.0003
+    },
+    {
+      "ticker": "KXATP-26WIM-NOR",
+      "title": "Will Cameron Norrie win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-MUS",
+      "title": "Will Lorenzo Musetti win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-MEN",
+      "title": "Will Jakub Mensik win the Wimbledon Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26WIM-MED",
+      "title": "Will Daniil Medvedev win the Wimbledon Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26WIM-KOR",
+      "title": "Will Sebastian Korda win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-KHA",
+      "title": "Will Karen Khachanov win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-JOD",
+      "title": "Will Rafael Jodar win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-HUR",
+      "title": "Will Hubert Hurkacz win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-FRI",
+      "title": "Will Taylor Fritz win the Wimbledon Men's Singles?",
+      "ask": 0.07,
+      "taker_fee": 0.0007
+    },
+    {
+      "ticker": "KXATP-26WIM-FON",
+      "title": "Will Joao Fonseca win the Wimbledon Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26WIM-FIL",
+      "title": "Will Arthur Fils win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-DRA",
+      "title": "Will Jack Draper win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-DJO",
+      "title": "Will Novak Djokovic win the Wimbledon Men's Singles?",
+      "ask": 0.12,
+      "taker_fee": 0.0012
+    },
+    {
+      "ticker": "KXATP-26WIM-DIA",
+      "title": "Will Gabriel Diallo win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-DE",
+      "title": "Will Alex de Minaur win the Wimbledon Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXATP-26WIM-COB",
+      "title": "Will Flavio Cobolli win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-CER",
+      "title": "Will Francisco Cerundolo win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-BUB",
+      "title": "Will Alexander Bublik win the Wimbledon Men's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXATP-26WIM-AUG",
+      "title": "Will Felix Auger-Aliassime win the Wimbledon Men's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXWTA-26WIM-RAD",
+      "title": "Will Emma Raducanu win the Wimbledon Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26WIM-WIL",
+      "title": "Will Serena Williams win the Wimbledon Women's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXWTA-26USO-ZHE",
+      "title": "Will Qinwen Zheng win the US Open Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26USO-SWI",
+      "title": "Will Iga Swiatek win the US Open Women's Singles?",
+      "ask": 0.12,
+      "taker_fee": 0.0012
+    },
+    {
+      "ticker": "KXWTA-26USO-SVI",
+      "title": "Will Elina Svitolina win the US Open Women's Singles?",
+      "ask": 0.07,
+      "taker_fee": 0.0007
+    },
+    {
+      "ticker": "KXWTA-26USO-SAK",
+      "title": "Will Maria Sakkari win the US Open Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26USO-SAB",
+      "title": "Will Aryna Sabalenka win the US Open Women's Singles?",
+      "ask": 0.23,
+      "taker_fee": 0.0023
+    },
+    {
+      "ticker": "KXWTA-26USO-RYB",
+      "title": "Will Elena Rybakina win the US Open Women's Singles?",
+      "ask": 0.11,
+      "taker_fee": 0.0011
+    },
+    {
+      "ticker": "KXWTA-26USO-PEG",
+      "title": "Will Jessica Pegula win the US Open Women's Singles?",
+      "ask": 0.07,
+      "taker_fee": 0.0007
+    },
+    {
+      "ticker": "KXWTA-26USO-PAO",
+      "title": "Will Jasmine Paolini win the US Open Women's Singles?",
+      "ask": 0.27,
+      "taker_fee": 0.0027
+    },
+    {
+      "ticker": "KXWTA-26USO-OST",
+      "title": "Will Jelena Ostapenko win the US Open Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26USO-OSA",
+      "title": "Will Naomi Osaka win the US Open Women's Singles?",
+      "ask": 0.08,
+      "taker_fee": 0.0008
+    },
+    {
+      "ticker": "KXWTA-26USO-NAV",
+      "title": "Will Emma Navarro win the US Open Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26USO-MUC",
+      "title": "Will Karolina Muchova win the US Open Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26USO-MBO",
+      "title": "Will Victoria Mboko win the US Open Women's Singles?",
+      "ask": 0.13,
+      "taker_fee": 0.0013
+    },
+    {
+      "ticker": "KXWTA-26USO-KRE",
+      "title": "Will Barbora Krejcikova win the US Open Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26USO-KOS",
+      "title": "Will Marta Kostyuk win the US Open Women's Singles?",
+      "ask": 0.08,
+      "taker_fee": 0.0008
+    },
+    {
+      "ticker": "KXWTA-26USO-KEY",
+      "title": "Will Madison Keys win the US Open Women's Singles?",
+      "ask": 0.07,
+      "taker_fee": 0.0007
+    },
+    {
+      "ticker": "KXWTA-26USO-JOV",
+      "title": "Will Iva Jovic win the US Open Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26USO-GAU",
+      "title": "Will Coco Gauff win the US Open Women's Singles?",
+      "ask": 0.11,
+      "taker_fee": 0.0011
+    },
+    {
+      "ticker": "KXWTA-26USO-CHW",
+      "title": "Will Maja Chwalinska win the US Open Women's Singles?",
+      "ask": 0.04,
+      "taker_fee": 0.0004
+    },
+    {
+      "ticker": "KXWTA-26USO-BAD",
+      "title": "Will Paula Badosa win the US Open Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26USO-ANI",
+      "title": "Will Amanda Anisimova win the US Open Women's Singles?",
+      "ask": 0.05,
+      "taker_fee": 0.0005
+    },
+    {
+      "ticker": "KXWTA-26USO-AND",
+      "title": "Will Mirra Andreeva win the US Open Women's Singles?",
+      "ask": 0.08,
+      "taker_fee": 0.0008
+    },
+    {
+      "ticker": "KXWTA-26WIM-ZHE",
+      "title": "Will Qinwen Zheng win the Wimbledon Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26WIM-SWI",
+      "title": "Will Iga Swiatek win the Wimbledon Women's Singles?",
+      "ask": 0.09,
+      "taker_fee": 0.0009
+    },
+    {
+      "ticker": "KXWTA-26WIM-SVI",
+      "title": "Will Elina Svitolina win the Wimbledon Women's Singles?",
+      "ask": 0.04,
+      "taker_fee": 0.0004
+    },
+    {
+      "ticker": "KXWTA-26WIM-SAK",
+      "title": "Will Maria Sakkari win the Wimbledon Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26WIM-SAB",
+      "title": "Will Aryna Sabalenka win the Wimbledon Women's Singles?",
+      "ask": 0.25,
+      "taker_fee": 0.0025
+    },
+    {
+      "ticker": "KXWTA-26WIM-RYB",
+      "title": "Will Elena Rybakina win the Wimbledon Women's Singles?",
+      "ask": 0.14,
+      "taker_fee": 0.0014
+    },
+    {
+      "ticker": "KXWTA-26WIM-PEG",
+      "title": "Will Jessica Pegula win the Wimbledon Women's Singles?",
+      "ask": 0.09,
+      "taker_fee": 0.0009
+    },
+    {
+      "ticker": "KXWTA-26WIM-PAO",
+      "title": "Will Jasmine Paolini win the Wimbledon Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26WIM-OST",
+      "title": "Will Jelena Ostapenko win the Wimbledon Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26WIM-OSA",
+      "title": "Will Naomi Osaka win the Wimbledon Women's Singles?",
+      "ask": 0.03,
+      "taker_fee": 0.0003
+    },
+    {
+      "ticker": "KXWTA-26WIM-NAV",
+      "title": "Will Emma Navarro win the Wimbledon Women's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXWTA-26WIM-MUC",
+      "title": "Will Karolina Muchova win the Wimbledon Women's Singles?",
+      "ask": 0.05,
+      "taker_fee": 0.0005
+    },
+    {
+      "ticker": "KXWTA-26WIM-MBO",
+      "title": "Will Victoria Mboko win the Wimbledon Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26WIM-KRE",
+      "title": "Will Barbora Krejcikova win the Wimbledon Women's Singles?",
+      "ask": 0.02,
+      "taker_fee": 0.0002
+    },
+    {
+      "ticker": "KXWTA-26WIM-KOS",
+      "title": "Will Marta Kostyuk win the Wimbledon Women's Singles?",
+      "ask": 0.03,
+      "taker_fee": 0.0003
+    },
+    {
+      "ticker": "KXWTA-26WIM-KEY",
+      "title": "Will Madison Keys win the Wimbledon Women's Singles?",
+      "ask": 0.05,
+      "taker_fee": 0.0005
+    },
+    {
+      "ticker": "KXWTA-26WIM-JOV",
+      "title": "Will Iva Jovic win the Wimbledon Women's Singles?",
+      "ask": 0.04,
+      "taker_fee": 0.0004
+    },
+    {
+      "ticker": "KXWTA-26WIM-GAU",
+      "title": "Will Coco Gauff win the Wimbledon Women's Singles?",
+      "ask": 0.07,
+      "taker_fee": 0.0007
+    },
+    {
+      "ticker": "KXWTA-26WIM-CHW",
+      "title": "Will Maja Chwalinska win the Wimbledon Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26WIM-BAD",
+      "title": "Will Paula Badosa win the Wimbledon Women's Singles?",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "ticker": "KXWTA-26WIM-ANI",
+      "title": "Will Amanda Anisimova win the Wimbledon Women's Singles?",
+      "ask": 0.06,
+      "taker_fee": 0.0006
+    },
+    {
+      "ticker": "KXWTA-26WIM-AND",
+      "title": "Will Mirra Andreeva win the Wimbledon Women's Singles?",
+      "ask": 0.09,
+      "taker_fee": 0.0009
+    }
+  ],
+  "polymarket_raw": [
+    {
+      "slug": "aec-atp-framae-ognmil-2026-06-30",
+      "title": "Francesco Maestrelli vs. Ognjen Milic",
+      "team_abbr": "framae",
+      "ask": 0.06,
+      "taker_fee": 0.0006
+    },
+    {
+      "slug": "aec-atp-framae-ognmil-2026-06-30",
+      "title": "Francesco Maestrelli vs. Ognjen Milic",
+      "team_abbr": "ognmil",
+      "ask": 0.95,
+      "taker_fee": 0.0095
+    },
+    {
+      "slug": "aec-atp-laumid-stehai-2026-06-30",
+      "title": "Lautaro Midon vs. Stefan Haita",
+      "team_abbr": "stehai",
+      "ask": 0.01,
+      "taker_fee": 0.0001
+    },
+    {
+      "slug": "aec-atp-lorgiu-svygul-2026-06-29",
+      "title": "Lorenzo Giustino vs. Svyatoslav Gulin",
+      "team_abbr": "svygul",
+      "ask": 0.08,
+      "taker_fee": 0.0008
+    },
+    {
+      "slug": "aec-atp-fresil-edabut-2026-06-30",
+      "title": "Frederico Ferreira Silva vs. Edas Butvilas",
+      "team_abbr": "fresil",
+      "ask": 0.98,
+      "taker_fee": 0.0098
+    },
+    {
+      "slug": "aec-atp-fresil-edabut-2026-06-30",
+      "title": "Frederico Ferreira Silva vs. Edas Butvilas",
+      "team_abbr": "edabut",
+      "ask": 0.03,
+      "taker_fee": 0.0003
+    },
+    {
+      "slug": "aec-atp-radalb-zsopir-2026-06-30",
+      "title": "Radu Albot vs. Zsombor Piros",
+      "team_abbr": "radalb",
+      "ask": 0.26,
+      "taker_fee": 0.0026
+    },
+    {
+      "slug": "aec-atp-radalb-zsopir-2026-06-30",
+      "title": "Radu Albot vs. Zsombor Piros",
+      "team_abbr": "zsopir",
+      "ask": 0.75,
+      "taker_fee": 0.0075
+    },
+    {
+      "slug": "aec-atp-niemcd-juamar-2026-06-29",
+      "title": "Niels McDonald vs. Juan Martin",
+      "team_abbr": "niemcd",
+      "ask": 0.84,
+      "taker_fee": 0.0084
+    },
+    {
+      "slug": "aec-atp-niemcd-juamar-2026-06-29",
+      "title": "Niels McDonald vs. Juan Martin",
+      "team_abbr": "juamar",
+      "ask": 0.25,
+      "taker_fee": 0.0025
+    },
+    {
+      "slug": "aec-atp-keesmi-gabghe-2026-06-30",
+      "title": "Keegan Smith vs. Gabriel Ghetu",
+      "team_abbr": "keesmi",
+      "ask": 0.46,
+      "taker_fee": 0.0046
+    },
+    {
+      "slug": "aec-atp-keesmi-gabghe-2026-06-30",
+      "title": "Keegan Smith vs. Gabriel Ghetu",
+      "team_abbr": "gabghe",
+      "ask": 0.55,
+      "taker_fee": 0.0055
+    },
+    {
+      "slug": "aec-atp-manman-ioaxil-2026-06-30",
+      "title": "Manoj Dhamne Manas vs. Ioannis Xilas",
+      "team_abbr": "manman",
+      "ask": 0.73,
+      "taker_fee": 0.0073
+    },
+    {
+      "slug": "aec-atp-manman-ioaxil-2026-06-30",
+      "title": "Manoj Dhamne Manas vs. Ioannis Xilas",
+      "team_abbr": "ioaxil",
+      "ask": 0.28,
+      "taker_fee": 0.0028
+    },
+    {
+      "slug": "aec-atp-yanhan-gioper-2026-06-29",
+      "title": "Yannick Hanfmann vs. Giovanni Mpetshi Perricard",
+      "team_abbr": "yanhan",
+      "ask": 0.39,
+      "taker_fee": 0.0039
+    },
+    {
+      "slug": "aec-atp-yanhan-gioper-2026-06-29",
+      "title": "Yannick Hanfmann vs. Giovanni Mpetshi Perricard",
+      "team_abbr": "gioper",
+      "ask": 0.62,
+      "taker_fee": 0.0062
+    },
+    {
+      "slug": "aec-atp-facaco-migtob-2026-06-29",
+      "title": "Facundo Acosta vs. Miguel Tobon",
+      "team_abbr": "facaco",
+      "ask": 0.82,
+      "taker_fee": 0.0082
+    },
+    {
+      "slug": "aec-atp-facaco-migtob-2026-06-29",
+      "title": "Facundo Acosta vs. Miguel Tobon",
+      "team_abbr": "migtob",
+      "ask": 0.19,
+      "taker_fee": 0.0019
+    },
+    {
+      "slug": "aec-atp-valroy-harwen-2026-06-29",
+      "title": "Valentin Royer vs. Harry Wendelken",
+      "team_abbr": "valroy",
+      "ask": 0.55,
+      "taker_fee": 0.0055
+    },
+    {
+      "slug": "aec-atp-valroy-harwen-2026-06-29",
+      "title": "Valentin Royer vs. Harry Wendelken",
+      "team_abbr": "harwen",
+      "ask": 0.46,
+      "taker_fee": 0.0046
+    },
+    {
+      "slug": "aec-atp-geobla-lucsta-2026-06-29",
+      "title": "Geoffrey Blancaneaux vs. Luca Staeheli",
+      "team_abbr": "geobla",
+      "ask": 0.59,
+      "taker_fee": 0.0059
+    },
+    {
+      "slug": "aec-atp-geobla-lucsta-2026-06-29",
+      "title": "Geoffrey Blancaneaux vs. Luca Staeheli",
+      "team_abbr": "lucsta",
+      "ask": 0.42,
+      "taker_fee": 0.0042
+    },
+    {
+      "slug": "aec-atp-shoshi-jaifar-2026-06-29",
+      "title": "Sho Shimabukuro vs. Jaime Faria",
+      "team_abbr": "shoshi",
+      "ask": 0.54,
+      "taker_fee": 0.0054
+    },
+    {
+      "slug": "aec-atp-shoshi-jaifar-2026-06-29",
+      "title": "Sho Shimabukuro vs. Jaime Faria",
+      "team_abbr": "jaifar",
+      "ask": 0.47,
+      "taker_fee": 0.0047
+    },
+    {
+      "slug": "aec-atp-adrman-titdro-2026-06-29",
+      "title": "Adrian Mannarino vs. Titouan Droguet",
+      "team_abbr": "adrman",
+      "ask": 0.72,
+      "taker_fee": 0.0072
+    },
+    {
+      "slug": "aec-atp-adrman-titdro-2026-06-29",
+      "title": "Adrian Mannarino vs. Titouan Droguet",
+      "team_abbr": "titdro",
+      "ask": 0.29,
+      "taker_fee": 0.0029
+    },
+    {
+      "slug": "aec-atp-fracom-matdon-2026-06-30",
+      "title": "Francisco Comesana vs. Matthew William Donald",
+      "team_abbr": "fracom",
+      "ask": 0.86,
+      "taker_fee": 0.0086
+    },
+    {
+      "slug": "aec-atp-fracom-matdon-2026-06-30",
+      "title": "Francisco Comesana vs. Matthew William Donald",
+      "team_abbr": "matdon",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "slug": "aec-atp-kilfel-sampie-2026-06-30",
+      "title": "Kilian Feldbausch vs. Samuele Pieri",
+      "team_abbr": "kilfel",
+      "ask": 0.79,
+      "taker_fee": 0.0079
+    },
+    {
+      "slug": "aec-atp-kilfel-sampie-2026-06-30",
+      "title": "Kilian Feldbausch vs. Samuele Pieri",
+      "team_abbr": "sampie",
+      "ask": 0.22,
+      "taker_fee": 0.0022
+    },
+    {
+      "slug": "aec-atp-kammaj-aletab-2026-06-29",
+      "title": "Kamil Majchrzak vs. Alejandro Tabilo",
+      "team_abbr": "kammaj",
+      "ask": 0.69,
+      "taker_fee": 0.0069
+    },
+    {
+      "slug": "aec-atp-kammaj-aletab-2026-06-29",
+      "title": "Kamil Majchrzak vs. Alejandro Tabilo",
+      "team_abbr": "aletab",
+      "ask": 0.32,
+      "taker_fee": 0.0032
+    },
+    {
+      "slug": "aec-atp-ilisim-dimkuz-2026-06-30",
+      "title": "Ilia Simakin vs. Dimitar Kuzmanov",
+      "team_abbr": "ilisim",
+      "ask": 0.41,
+      "taker_fee": 0.0041
+    },
+    {
+      "slug": "aec-atp-ilisim-dimkuz-2026-06-30",
+      "title": "Ilia Simakin vs. Dimitar Kuzmanov",
+      "team_abbr": "dimkuz",
+      "ask": 0.6,
+      "taker_fee": 0.006
+    },
+    {
+      "slug": "aec-atp-lukpav-akisan-2026-06-30",
+      "title": "Luka Pavlovic vs. Akira Santillan",
+      "team_abbr": "lukpav",
+      "ask": 0.73,
+      "taker_fee": 0.0073
+    },
+    {
+      "slug": "aec-atp-lukpav-akisan-2026-06-30",
+      "title": "Luka Pavlovic vs. Akira Santillan",
+      "team_abbr": "akisan",
+      "ask": 0.28,
+      "taker_fee": 0.0028
+    },
+    {
+      "slug": "aec-atp-micrib-danrap-2026-06-30",
+      "title": "Michele Ribecai vs. Daniele Rapagnetta",
+      "team_abbr": "micrib",
+      "ask": 0.76,
+      "taker_fee": 0.0076
+    },
+    {
+      "slug": "aec-atp-micrib-danrap-2026-06-30",
+      "title": "Michele Ribecai vs. Daniele Rapagnetta",
+      "team_abbr": "danrap",
+      "ask": 0.25,
+      "taker_fee": 0.0025
+    },
+    {
+      "slug": "aec-atp-stepal-denyev-2026-06-30",
+      "title": "Stefan Palosi vs. Denis Yevseyev",
+      "team_abbr": "stepal",
+      "ask": 0.51,
+      "taker_fee": 0.0051
+    },
+    {
+      "slug": "aec-atp-stepal-denyev-2026-06-30",
+      "title": "Stefan Palosi vs. Denis Yevseyev",
+      "team_abbr": "denyev",
+      "ask": 0.5,
+      "taker_fee": 0.005
+    },
+    {
+      "slug": "aec-atp-fedbon-inamon-2026-06-30",
+      "title": "Federico Bondioli vs. Inaki Montes",
+      "team_abbr": "fedbon",
+      "ask": 0.31,
+      "taker_fee": 0.0031
+    },
+    {
+      "slug": "aec-atp-fedbon-inamon-2026-06-30",
+      "title": "Federico Bondioli vs. Inaki Montes",
+      "team_abbr": "inamon",
+      "ask": 0.7,
+      "taker_fee": 0.007
+    },
+    {
+      "slug": "aec-atp-alemic-jacfea-2026-06-29",
+      "title": "Alex Michelsen vs. Jacob Fearnley",
+      "team_abbr": "alemic",
+      "ask": 0.58,
+      "taker_fee": 0.0058
+    },
+    {
+      "slug": "aec-atp-alemic-jacfea-2026-06-29",
+      "title": "Alex Michelsen vs. Jacob Fearnley",
+      "team_abbr": "jacfea",
+      "ask": 0.43,
+      "taker_fee": 0.0043
+    },
+    {
+      "slug": "aec-atp-alemin-rombur-2026-06-29",
+      "title": "Alex de Minaur vs. Roman Andres Burruchaga",
+      "team_abbr": "alemin",
+      "ask": 0.95,
+      "taker_fee": 0.0095
+    },
+    {
+      "slug": "aec-atp-alemin-rombur-2026-06-29",
+      "title": "Alex de Minaur vs. Roman Andres Burruchaga",
+      "team_abbr": "rombur",
+      "ask": 0.06,
+      "taker_fee": 0.0006
+    },
+    {
+      "slug": "aec-atp-ugohum-zizber-2026-06-29",
+      "title": "Ugo Humbert vs. Zizou Bergs",
+      "team_abbr": "ugohum",
+      "ask": 0.64,
+      "taker_fee": 0.0064
+    },
+    {
+      "slug": "aec-atp-ugohum-zizber-2026-06-29",
+      "title": "Ugo Humbert vs. Zizou Bergs",
+      "team_abbr": "zizber",
+      "ask": 0.37,
+      "taker_fee": 0.0037
+    },
+    {
+      "slug": "aec-atp-damdzu-artfer-2026-06-29",
+      "title": "Damir Dzumhur vs. Arthur Fery",
+      "team_abbr": "damdzu",
+      "ask": 0.22,
+      "taker_fee": 0.0022
+    },
+    {
+      "slug": "aec-atp-damdzu-artfer-2026-06-29",
+      "title": "Damir Dzumhur vs. Arthur Fery",
+      "team_abbr": "artfer",
+      "ask": 0.79,
+      "taker_fee": 0.0079
+    },
+    {
+      "slug": "aec-atp-ottvir-benshe-2026-06-29",
+      "title": "Otto Virtanen vs. Ben Shelton",
+      "team_abbr": "ottvir",
+      "ask": 0.2,
+      "taker_fee": 0.002
+    },
+    {
+      "slug": "aec-atp-ottvir-benshe-2026-06-29",
+      "title": "Otto Virtanen vs. Ben Shelton",
+      "team_abbr": "benshe",
+      "ask": 0.81,
+      "taker_fee": 0.0081
+    },
+    {
+      "slug": "aec-atp-kyrjac-vilgau-2026-06-29",
+      "title": "Kyrian Jacquet vs. Vilius Gaubas",
+      "team_abbr": "kyrjac",
+      "ask": 0.71,
+      "taker_fee": 0.0071
+    },
+    {
+      "slug": "aec-atp-kyrjac-vilgau-2026-06-29",
+      "title": "Kyrian Jacquet vs. Vilius Gaubas",
+      "team_abbr": "vilgau",
+      "ask": 0.3,
+      "taker_fee": 0.003
+    },
+    {
+      "slug": "aec-atp-thakok-alebub-2026-06-29",
+      "title": "Thanasi Kokkinakis vs. Alexander Bublik",
+      "team_abbr": "thakok",
+      "ask": 0.31,
+      "taker_fee": 0.0031
+    },
+    {
+      "slug": "aec-atp-thakok-alebub-2026-06-29",
+      "title": "Thanasi Kokkinakis vs. Alexander Bublik",
+      "team_abbr": "alebub",
+      "ask": 0.7,
+      "taker_fee": 0.007
+    },
+    {
+      "slug": "aec-atp-branak-jacjon-2026-06-29",
+      "title": "Brandon Nakashima vs. Jack Pinnington Jones",
+      "team_abbr": "branak",
+      "ask": 0.97,
+      "taker_fee": 0.0097
+    },
+    {
+      "slug": "aec-atp-branak-jacjon-2026-06-29",
+      "title": "Brandon Nakashima vs. Jack Pinnington Jones",
+      "team_abbr": "jacjon",
+      "ask": 0.04,
+      "taker_fee": 0.0004
+    },
+    {
+      "slug": "aec-atp-matarn-quehal-2026-06-29",
+      "title": "Matteo Arnaldi vs. Quentin Halys",
+      "team_abbr": "matarn",
+      "ask": 0.44,
+      "taker_fee": 0.0044
+    },
+    {
+      "slug": "aec-atp-matarn-quehal-2026-06-29",
+      "title": "Matteo Arnaldi vs. Quentin Halys",
+      "team_abbr": "quehal",
+      "ask": 0.57,
+      "taker_fee": 0.0057
+    },
+    {
+      "slug": "aec-atp-davsan-juapra-2026-06-29",
+      "title": "David Jorda Sanchis vs. Juan Carlos Prado",
+      "team_abbr": "davsan",
+      "ask": 0.44,
+      "taker_fee": 0.0044
+    },
+    {
+      "slug": "aec-atp-davsan-juapra-2026-06-29",
+      "title": "David Jorda Sanchis vs. Juan Carlos Prado",
+      "team_abbr": "juapra",
+      "ask": 0.57,
+      "taker_fee": 0.0057
+    },
+    {
+      "slug": "aec-atp-raubra-nikbas-2026-06-29",
+      "title": "Raul Brancaccio vs. Nikoloz Basilashvili",
+      "team_abbr": "raubra",
+      "ask": 0.34,
+      "taker_fee": 0.0034
+    },
+    {
+      "slug": "aec-atp-raubra-nikbas-2026-06-29",
+      "title": "Raul Brancaccio vs. Nikoloz Basilashvili",
+      "team_abbr": "nikbas",
+      "ask": 0.67,
+      "taker_fee": 0.0067
+    },
+    {
+      "slug": "aec-atp-pabrui-zacsva-2026-06-29",
+      "title": "Pablo Llamas Ruiz vs. Zachary Svajda",
+      "team_abbr": "pabrui",
+      "ask": 0.3,
+      "taker_fee": 0.003
+    },
+    {
+      "slug": "aec-atp-pabrui-zacsva-2026-06-29",
+      "title": "Pablo Llamas Ruiz vs. Zachary Svajda",
+      "team_abbr": "zacsva",
+      "ask": 0.71,
+      "taker_fee": 0.0071
+    },
+    {
+      "slug": "aec-atp-maxcha-patzah-2026-06-29",
+      "title": "Maxime Chazal vs. Patrick Zahraj",
+      "team_abbr": "maxcha",
+      "ask": 0.64,
+      "taker_fee": 0.0064
+    },
+    {
+      "slug": "aec-atp-maxcha-patzah-2026-06-29",
+      "title": "Maxime Chazal vs. Patrick Zahraj",
+      "team_abbr": "patzah",
+      "ask": 0.37,
+      "taker_fee": 0.0037
+    },
+    {
+      "slug": "aec-atp-pavlag-elicou-2026-06-30",
+      "title": "Pavel Lagutin vs. Eliakim Coulibaly",
+      "team_abbr": "pavlag",
+      "ask": 0.45,
+      "taker_fee": 0.0045
+    },
+    {
+      "slug": "aec-atp-pavlag-elicou-2026-06-30",
+      "title": "Pavel Lagutin vs. Eliakim Coulibaly",
+      "team_abbr": "elicou",
+      "ask": 0.56,
+      "taker_fee": 0.0056
+    },
+    {
+      "slug": "aec-atp-aleblo-alezve-2026-06-29",
+      "title": "Alexander Blockx vs. Alexander Zverev",
+      "team_abbr": "aleblo",
+      "ask": 0.12,
+      "taker_fee": 0.0012
+    },
+    {
+      "slug": "aec-atp-aleblo-alezve-2026-06-29",
+      "title": "Alexander Blockx vs. Alexander Zverev",
+      "team_abbr": "alezve",
+      "ask": 0.89,
+      "taker_fee": 0.0089
+    },
+    {
+      "slug": "aec-atp-jaumun-fracer-2026-06-29",
+      "title": "Jaume Munar vs. Francisco Cerundolo",
+      "team_abbr": "jaumun",
+      "ask": 0.24,
+      "taker_fee": 0.0024
+    },
+    {
+      "slug": "aec-atp-jaumun-fracer-2026-06-29",
+      "title": "Jaume Munar vs. Francisco Cerundolo",
+      "team_abbr": "fracer",
+      "ask": 0.77,
+      "taker_fee": 0.0077
+    },
+    {
+      "slug": "aec-atp-benbon-gabdia-2026-06-29",
+      "title": "Benjamin Bonzi vs. Gabriel Diallo",
+      "team_abbr": "benbon",
+      "ask": 0.51,
+      "taker_fee": 0.0051
+    },
+    {
+      "slug": "aec-atp-benbon-gabdia-2026-06-29",
+      "title": "Benjamin Bonzi vs. Gabriel Diallo",
+      "team_abbr": "gabdia",
+      "ask": 0.5,
+      "taker_fee": 0.005
+    },
+    {
+      "slug": "aec-atp-karkha-bilhar-2026-06-29",
+      "title": "Karen Khachanov vs. Billy Harris",
+      "team_abbr": "karkha",
+      "ask": 0.75,
+      "taker_fee": 0.0075
+    },
+    {
+      "slug": "aec-atp-karkha-bilhar-2026-06-29",
+      "title": "Karen Khachanov vs. Billy Harris",
+      "team_abbr": "bilhar",
+      "ask": 0.26,
+      "taker_fee": 0.0026
+    },
+    {
+      "slug": "aec-atp-jesjon-rinhij-2026-06-29",
+      "title": "Jesper de Jong vs. Rinky Hijikata",
+      "team_abbr": "jesjon",
+      "ask": 0.17,
+      "taker_fee": 0.0017
+    },
+    {
+      "slug": "aec-atp-jesjon-rinhij-2026-06-29",
+      "title": "Jesper de Jong vs. Rinky Hijikata",
+      "team_abbr": "rinhij",
+      "ask": 0.84,
+      "taker_fee": 0.0084
+    },
+    {
+      "slug": "aec-atp-alevas-kaiweh-2026-06-30",
+      "title": "Alexander Vasilev vs. Kai Wehnelt",
+      "team_abbr": "alevas",
+      "ask": 0.64,
+      "taker_fee": 0.0064
+    },
+    {
+      "slug": "aec-atp-alevas-kaiweh-2026-06-30",
+      "title": "Alexander Vasilev vs. Kai Wehnelt",
+      "team_abbr": "kaiweh",
+      "ask": 0.37,
+      "taker_fee": 0.0037
+    },
+    {
+      "slug": "aec-atp-cezcre-ollwal-2026-06-30",
+      "title": "Cezar Cretu vs. Olle Wallin",
+      "team_abbr": "cezcre",
+      "ask": 0.74,
+      "taker_fee": 0.0074
+    },
+    {
+      "slug": "aec-atp-cezcre-ollwal-2026-06-30",
+      "title": "Cezar Cretu vs. Olle Wallin",
+      "team_abbr": "ollwal",
+      "ask": 0.27,
+      "taker_fee": 0.0027
+    },
+    {
+      "slug": "aec-atp-yutshi-micmmo-2026-06-30",
+      "title": "Yuta Shimizu vs. Michael Mmoh",
+      "team_abbr": "yutshi",
+      "ask": 0.37,
+      "taker_fee": 0.0037
+    },
+    {
+      "slug": "aec-atp-yutshi-micmmo-2026-06-30",
+      "title": "Yuta Shimizu vs. Michael Mmoh",
+      "team_abbr": "micmmo",
+      "ask": 0.64,
+      "taker_fee": 0.0064
+    },
+    {
+      "slug": "aec-atp-carcan-izaval-2026-06-30",
+      "title": "Carlo Alberto Caniato vs. Izan Almazan Valiente",
+      "team_abbr": "carcan",
+      "ask": 0.74,
+      "taker_fee": 0.0074
+    },
+    {
+      "slug": "aec-atp-carcan-izaval-2026-06-30",
+      "title": "Carlo Alberto Caniato vs. Izan Almazan Valiente",
+      "team_abbr": "izaval",
+      "ask": 0.27,
+      "taker_fee": 0.0027
+    },
+    {
+      "slug": "aec-atp-cormou-margir-2026-06-29",
+      "title": "Corentin Moutet vs. Marcos Giron",
+      "team_abbr": "cormou",
+      "ask": 0.46,
+      "taker_fee": 0.0046
+    },
+    {
+      "slug": "aec-atp-cormou-margir-2026-06-29",
+      "title": "Corentin Moutet vs. Marcos Giron",
+      "team_abbr": "margir",
+      "ask": 0.55,
+      "taker_fee": 0.0055
+    },
+    {
+      "slug": "aec-atp-lorson-tometc-2026-06-29",
+      "title": "Lorenzo Sonego vs. Tomas Etcheverry",
+      "team_abbr": "lorson",
+      "ask": 0.53,
+      "taker_fee": 0.0053
+    },
+    {
+      "slug": "aec-atp-lorson-tometc-2026-06-29",
+      "title": "Lorenzo Sonego vs. Tomas Etcheverry",
+      "team_abbr": "tometc",
+      "ask": 0.48,
+      "taker_fee": 0.0048
+    },
+    {
+      "slug": "aec-atp-jakmen-tobsam-2026-06-29",
+      "title": "Jakub Mensik vs. Toby Samuel",
+      "team_abbr": "jakmen",
+      "ask": 0.69,
+      "taker_fee": 0.0069
+    },
+    {
+      "slug": "aec-atp-jakmen-tobsam-2026-06-29",
+      "title": "Jakub Mensik vs. Toby Samuel",
+      "team_abbr": "tobsam",
+      "ask": 0.32,
+      "taker_fee": 0.0032
+    },
+    {
+      "slug": "aec-atp-rapcol-artfil-2026-06-29",
+      "title": "Raphael Collignon vs. Arthur Fils",
+      "team_abbr": "rapcol",
+      "ask": 0.43,
+      "taker_fee": 0.0043
+    },
+    {
+      "slug": "aec-atp-rapcol-artfil-2026-06-29",
+      "title": "Raphael Collignon vs. Arthur Fils",
+      "team_abbr": "artfil",
+      "ask": 0.58,
+      "taker_fee": 0.0058
+    },
+    {
+      "slug": "aec-atp-patkyp-macmcd-2026-06-29",
+      "title": "Patrick Kypson vs. Mackenzie McDonald",
+      "team_abbr": "patkyp",
+      "ask": 0.29,
+      "taker_fee": 0.0029
+    },
+    {
+      "slug": "aec-atp-patkyp-macmcd-2026-06-29",
+      "title": "Patrick Kypson vs. Mackenzie McDonald",
+      "team_abbr": "macmcd",
+      "ask": 0.72,
+      "taker_fee": 0.0072
+    },
+    {
+      "slug": "aec-atp-tayfri-duslaj-2026-06-30",
+      "title": "Taylor Fritz vs. Dusan Lajovic",
+      "team_abbr": "tayfri",
+      "ask": 0.95,
+      "taker_fee": 0.0095
+    },
+    {
+      "slug": "aec-atp-tayfri-duslaj-2026-06-30",
+      "title": "Taylor Fritz vs. Dusan Lajovic",
+      "team_abbr": "duslaj",
+      "ask": 0.06,
+      "taker_fee": 0.0006
+    },
+    {
+      "slug": "aec-atp-elmmoe-norgom-2026-06-30",
+      "title": "Elmer Moeller vs. Norbert Gombos",
+      "team_abbr": "elmmoe",
+      "ask": 0.65,
+      "taker_fee": 0.0065
+    },
+    {
+      "slug": "aec-atp-elmmoe-norgom-2026-06-30",
+      "title": "Elmer Moeller vs. Norbert Gombos",
+      "team_abbr": "norgom",
+      "ask": 0.36,
+      "taker_fee": 0.0036
+    },
+    {
+      "slug": "aec-atp-filrom-marcec-2026-06-29",
+      "title": "Filippo Romano vs. Marco Cecchinato",
+      "team_abbr": "filrom",
+      "ask": 0.35,
+      "taker_fee": 0.0035
+    },
+    {
+      "slug": "aec-atp-filrom-marcec-2026-06-29",
+      "title": "Filippo Romano vs. Marco Cecchinato",
+      "team_abbr": "marcec",
+      "ask": 0.66,
+      "taker_fee": 0.0066
+    },
+    {
+      "slug": "aec-atp-oribat-piebas-2026-06-30",
+      "title": "Oriol Roca Batalla vs. Pierluigi Basile",
+      "team_abbr": "oribat",
+      "ask": 0.67,
+      "taker_fee": 0.0067
+    },
+    {
+      "slug": "aec-atp-oribat-piebas-2026-06-30",
+      "title": "Oriol Roca Batalla vs. Pierluigi Basile",
+      "team_abbr": "piebas",
+      "ask": 0.34,
+      "taker_fee": 0.0034
+    },
+    {
+      "slug": "aec-atp-edwwin-andfen-2026-06-30",
+      "title": "Edward Winter vs. Andrew Fenty",
+      "team_abbr": "edwwin",
+      "ask": 0.45,
+      "taker_fee": 0.0045
+    },
+    {
+      "slug": "aec-atp-edwwin-andfen-2026-06-30",
+      "title": "Edward Winter vs. Andrew Fenty",
+      "team_abbr": "andfen",
+      "ask": 0.56,
+      "taker_fee": 0.0056
+    },
+    {
+      "slug": "aec-atp-tunwu-bertom-2026-06-29",
+      "title": "Tung-Lin Wu vs. Bernard Tomic",
+      "team_abbr": "tunwu",
+      "ask": 0.57,
+      "taker_fee": 0.0057
+    },
+    {
+      "slug": "aec-atp-tunwu-bertom-2026-06-29",
+      "title": "Tung-Lin Wu vs. Bernard Tomic",
+      "team_abbr": "bertom",
+      "ask": 0.44,
+      "taker_fee": 0.0044
+    },
+    {
+      "slug": "aec-atp-danswe-gridim-2026-06-29",
+      "title": "Dane Sweeny vs. Grigor Dimitrov",
+      "team_abbr": "danswe",
+      "ask": 0.23,
+      "taker_fee": 0.0023
+    },
+    {
+      "slug": "aec-atp-danswe-gridim-2026-06-29",
+      "title": "Dane Sweeny vs. Grigor Dimitrov",
+      "team_abbr": "gridim",
+      "ask": 0.78,
+      "taker_fee": 0.0078
+    },
+    {
+      "slug": "aec-atp-talgri-jamduc-2026-06-29",
+      "title": "Tallon Griekspoor vs. James Duckworth",
+      "team_abbr": "talgri",
+      "ask": 0.69,
+      "taker_fee": 0.0069
+    },
+    {
+      "slug": "aec-atp-talgri-jamduc-2026-06-29",
+      "title": "Tallon Griekspoor vs. James Duckworth",
+      "team_abbr": "jamduc",
+      "ask": 0.32,
+      "taker_fee": 0.0032
+    },
+    {
+      "slug": "aec-atp-juaoso-petber-2026-06-30",
+      "title": "Juan Sebastian Osorio vs. Peter Bertran",
+      "team_abbr": "juaoso",
+      "ask": 0.49,
+      "taker_fee": 0.0049
+    },
+    {
+      "slug": "aec-atp-juaoso-petber-2026-06-30",
+      "title": "Juan Sebastian Osorio vs. Peter Bertran",
+      "team_abbr": "petber",
+      "ask": 0.52,
+      "taker_fee": 0.0052
+    },
+    {
+      "slug": "aec-atp-juagom-ignmon-2026-06-29",
+      "title": "Juan Sebastian Gomez vs. Ignacio Monzon",
+      "team_abbr": "juagom",
+      "ask": 0.49,
+      "taker_fee": 0.0049
+    },
+    {
+      "slug": "aec-atp-juagom-ignmon-2026-06-29",
+      "title": "Juan Sebastian Gomez vs. Ignacio Monzon",
+      "team_abbr": "ignmon",
+      "ask": 0.52,
+      "taker_fee": 0.0052
+    },
+    {
+      "slug": "aec-atp-facmen-valabo-2026-06-29",
+      "title": "Facundo Mena vs. Valerio Aboian",
+      "team_abbr": "facmen",
+      "ask": 0.67,
+      "taker_fee": 0.0067
+    },
+    {
+      "slug": "aec-atp-facmen-valabo-2026-06-29",
+      "title": "Facundo Mena vs. Valerio Aboian",
+      "team_abbr": "valabo",
+      "ask": 0.36,
+      "taker_fee": 0.0036
+    },
+    {
+      "slug": "aec-atp-alemol-danalt-2026-06-29",
+      "title": "Alex Molcan vs. Daniel Altmaier",
+      "team_abbr": "alemol",
+      "ask": 0.47,
+      "taker_fee": 0.0047
+    },
+    {
+      "slug": "aec-atp-alemol-danalt-2026-06-29",
+      "title": "Alex Molcan vs. Daniel Altmaier",
+      "team_abbr": "danalt",
+      "ask": 0.54,
+      "taker_fee": 0.0054
+    },
+    {
+      "slug": "aec-atp-jirleh-alepop-2026-06-29",
+      "title": "Jiri Lehecka vs. Alexei Popyrin",
+      "team_abbr": "jirleh",
+      "ask": 0.78,
+      "taker_fee": 0.0078
+    },
+    {
+      "slug": "aec-atp-jirleh-alepop-2026-06-29",
+      "title": "Jiri Lehecka vs. Alexei Popyrin",
+      "team_abbr": "alepop",
+      "ask": 0.23,
+      "taker_fee": 0.0023
+    },
+    {
+      "slug": "aec-atp-vitkop-jancho-2026-06-29",
+      "title": "Vit Kopriva vs. Jan Choinski",
+      "team_abbr": "vitkop",
+      "ask": 0.6,
+      "taker_fee": 0.006
+    },
+    {
+      "slug": "aec-atp-vitkop-jancho-2026-06-29",
+      "title": "Vit Kopriva vs. Jan Choinski",
+      "team_abbr": "jancho",
+      "ask": 0.41,
+      "taker_fee": 0.0041
+    },
+    {
+      "slug": "aec-atp-fratia-teratm-2026-06-29",
+      "title": "Frances Tiafoe vs. Terence Atmane",
+      "team_abbr": "fratia",
+      "ask": 0.8,
+      "taker_fee": 0.008
+    },
+    {
+      "slug": "aec-atp-fratia-teratm-2026-06-29",
+      "title": "Frances Tiafoe vs. Terence Atmane",
+      "team_abbr": "teratm",
+      "ask": 0.21,
+      "taker_fee": 0.0021
+    },
+    {
+      "slug": "aec-atp-marnav-flacob-2026-06-29",
+      "title": "Mariano Navone vs. Flavio Cobolli",
+      "team_abbr": "marnav",
+      "ask": 0.24,
+      "taker_fee": 0.0024
+    },
+    {
+      "slug": "aec-atp-marnav-flacob-2026-06-29",
+      "title": "Mariano Navone vs. Flavio Cobolli",
+      "team_abbr": "flacob",
+      "ask": 0.77,
+      "taker_fee": 0.0077
+    },
+    {
+      "slug": "aec-atp-stawaw-matber-2026-06-29",
+      "title": "Stan Wawrinka vs. Matteo Berrettini",
+      "team_abbr": "stawaw",
+      "ask": 0.24,
+      "taker_fee": 0.0024
+    },
+    {
+      "slug": "aec-atp-stawaw-matber-2026-06-29",
+      "title": "Stan Wawrinka vs. Matteo Berrettini",
+      "team_abbr": "matber",
+      "ask": 0.77,
+      "taker_fee": 0.0077
+    },
+    {
+      "slug": "aec-atp-antmat-calhem-2026-06-30",
+      "title": "Anton Matusevich vs. Calvin Hemery",
+      "team_abbr": "antmat",
+      "ask": 0.41,
+      "taker_fee": 0.0041
+    },
+    {
+      "slug": "aec-atp-antmat-calhem-2026-06-30",
+      "title": "Anton Matusevich vs. Calvin Hemery",
+      "team_abbr": "calhem",
+      "ask": 0.6,
+      "taker_fee": 0.006
+    },
+    {
+      "slug": "aec-atp-jjwol-jayfri-2026-06-30",
+      "title": "J.J. Wolf vs. Jay Dylan Friend",
+      "team_abbr": "jjwol",
+      "ask": 0.6,
+      "taker_fee": 0.006
+    },
+    {
+      "slug": "aec-atp-jjwol-jayfri-2026-06-30",
+      "title": "J.J. Wolf vs. Jay Dylan Friend",
+      "team_abbr": "jayfri",
+      "ask": 0.42,
+      "taker_fee": 0.0042
+    },
+    {
+      "slug": "aec-atp-mwembi-matsot-2026-06-29",
+      "title": "Mwendwa Mbithi vs. Matias Soto",
+      "team_abbr": "mwembi",
+      "ask": 0.55,
+      "taker_fee": 0.0055
+    },
+    {
+      "slug": "aec-atp-mwembi-matsot-2026-06-29",
+      "title": "Mwendwa Mbithi vs. Matias Soto",
+      "team_abbr": "matsot",
+      "ask": 0.46,
+      "taker_fee": 0.0046
+    },
+    {
+      "slug": "aec-atp-hercas-margal-2026-06-29",
+      "title": "Hernan Casanova vs. Mario Andre Galarraga",
+      "team_abbr": "hercas",
+      "ask": 0.95,
+      "taker_fee": 0.0095
+    },
+    {
+      "slug": "aec-atp-hercas-margal-2026-06-29",
+      "title": "Hernan Casanova vs. Mario Andre Galarraga",
+      "team_abbr": "margal",
+      "ask": 0.11,
+      "taker_fee": 0.0011
+    },
+    {
+      "slug": "aec-atp-johrod-matalm-2026-06-29",
+      "title": "Johan Alexander Rodriguez vs. Matheus Pucinelli de Almeida",
+      "team_abbr": "johrod",
+      "ask": 0.25,
+      "taker_fee": 0.0025
+    },
+    {
+      "slug": "aec-atp-johrod-matalm-2026-06-29",
+      "title": "Johan Alexander Rodriguez vs. Matheus Pucinelli de Almeida",
+      "team_abbr": "matalm",
+      "ask": 0.76,
+      "taker_fee": 0.0076
+    },
+    {
+      "slug": "aec-atp-pedsak-alamag-2026-06-29",
+      "title": "Pedro Sakamoto vs. Alan Magadan",
+      "team_abbr": "pedsak",
+      "ask": 0.56,
+      "taker_fee": 0.0056
+    },
+    {
+      "slug": "aec-atp-pedsak-alamag-2026-06-29",
+      "title": "Pedro Sakamoto vs. Alan Magadan",
+      "team_abbr": "alamag",
+      "ask": 0.45,
+      "taker_fee": 0.0045
+    },
+    {
+      "slug": "aec-atp-rionog-alemar-2026-06-29",
+      "title": "Rio Noguchi vs. Alex Martinez",
+      "team_abbr": "rionog",
+      "ask": 0.66,
+      "taker_fee": 0.0066
+    },
+    {
+      "slug": "aec-atp-rionog-alemar-2026-06-29",
+      "title": "Rio Noguchi vs. Alex Martinez",
+      "team_abbr": "alemar",
+      "ask": 0.35,
+      "taker_fee": 0.0035
+    },
+    {
+      "slug": "aec-atp-juaser-aleher-2026-06-29",
+      "title": "Juan Manuel La Serna vs. Alex Hernandez",
+      "team_abbr": "juaser",
+      "ask": 0.69,
+      "taker_fee": 0.0069
+    },
+    {
+      "slug": "aec-atp-juaser-aleher-2026-06-29",
+      "title": "Juan Manuel La Serna vs. Alex Hernandez",
+      "team_abbr": "aleher",
+      "ask": 0.32,
+      "taker_fee": 0.0032
+    },
+    {
+      "slug": "aec-atp-lucsil-felalv-2026-06-30",
+      "title": "Lucas Da Silva vs. Felipe Meligeni Alves",
+      "team_abbr": "lucsil",
+      "ask": 0.43,
+      "taker_fee": 0.0043
+    },
+    {
+      "slug": "aec-atp-lucsil-felalv-2026-06-30",
+      "title": "Lucas Da Silva vs. Felipe Meligeni Alves",
+      "team_abbr": "felalv",
+      "ask": 0.58,
+      "taker_fee": 0.0058
+    },
+    {
+      "slug": "aec-atp-segzap-samlin-2026-06-30",
+      "title": "Segundo Goity Zapico vs. Samuel Linde",
+      "team_abbr": "segzap",
+      "ask": 0.53,
+      "taker_fee": 0.0053
+    },
+    {
+      "slug": "aec-atp-segzap-samlin-2026-06-30",
+      "title": "Segundo Goity Zapico vs. Samuel Linde",
+      "team_abbr": "samlin",
+      "ask": 0.48,
+      "taker_fee": 0.0048
+    },
+    {
+      "slug": "aec-atp-tommar-edurib-2026-06-30",
+      "title": "Tomas Martinez vs. Eduardo Ribeiro",
+      "team_abbr": "tommar",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "slug": "aec-atp-tommar-edurib-2026-06-30",
+      "title": "Tomas Martinez vs. Eduardo Ribeiro",
+      "team_abbr": "edurib",
+      "ask": 0.86,
+      "taker_fee": 0.0086
+    },
+    {
+      "slug": "aec-atp-brufer-rodpac-2026-06-29",
+      "title": "Bruno Fernandez vs. Rodrigo Pacheco",
+      "team_abbr": "brufer",
+      "ask": 0.2,
+      "taker_fee": 0.002
+    },
+    {
+      "slug": "aec-atp-brufer-rodpac-2026-06-29",
+      "title": "Bruno Fernandez vs. Rodrigo Pacheco",
+      "team_abbr": "rodpac",
+      "ask": 0.81,
+      "taker_fee": 0.0081
+    },
+    {
+      "slug": "aec-atp-gusalm-samher-2026-06-30",
+      "title": "Gustavo Almeida vs. Samuel Heredia",
+      "team_abbr": "gusalm",
+      "ask": 0.75,
+      "taker_fee": 0.0075
+    },
+    {
+      "slug": "aec-atp-gusalm-samher-2026-06-30",
+      "title": "Gustavo Almeida vs. Samuel Heredia",
+      "team_abbr": "samher",
+      "ask": 0.26,
+      "taker_fee": 0.0026
+    },
+    {
+      "slug": "aec-atp-timleg-blabic-2026-06-29",
+      "title": "Timo Legout vs. Blaise Bicknell",
+      "team_abbr": "timleg",
+      "ask": 0.49,
+      "taker_fee": 0.0049
+    },
+    {
+      "slug": "aec-atp-timleg-blabic-2026-06-29",
+      "title": "Timo Legout vs. Blaise Bicknell",
+      "team_abbr": "blabic",
+      "ask": 0.53,
+      "taker_fee": 0.0053
+    },
+    {
+      "slug": "aec-atp-blaell-phisek-2026-06-29",
+      "title": "Blake Ellis vs. Philip Sekulic",
+      "team_abbr": "blaell",
+      "ask": 0.46,
+      "taker_fee": 0.0046
+    },
+    {
+      "slug": "aec-atp-blaell-phisek-2026-06-29",
+      "title": "Blake Ellis vs. Philip Sekulic",
+      "team_abbr": "phisek",
+      "ask": 0.55,
+      "taker_fee": 0.0055
+    },
+    {
+      "slug": "aec-atp-reisak-juller-2026-06-29",
+      "title": "Rei Sakamoto vs. Jules Leroux",
+      "team_abbr": "reisak",
+      "ask": 0.91,
+      "taker_fee": 0.0091
+    },
+    {
+      "slug": "aec-atp-reisak-juller-2026-06-29",
+      "title": "Rei Sakamoto vs. Jules Leroux",
+      "team_abbr": "juller",
+      "ask": 0.1,
+      "taker_fee": 0.001
+    },
+    {
+      "slug": "aec-atp-fajsun-brashi-2026-06-29",
+      "title": "Fajing Sun vs. Braden Shick",
+      "team_abbr": "fajsun",
+      "ask": 0.5,
+      "taker_fee": 0.005
+    },
+    {
+      "slug": "aec-atp-fajsun-brashi-2026-06-29",
+      "title": "Fajing Sun vs. Braden Shick",
+      "team_abbr": "brashi",
+      "ask": 0.51,
+      "taker_fee": 0.0051
+    },
+    {
+      "slug": "aec-atp-ozabar-juafic-2026-06-30",
+      "title": "Ozan Baris vs. Juan Pablo Ficovich",
+      "team_abbr": "ozabar",
+      "ask": 0.58,
+      "taker_fee": 0.0058
+    },
+    {
+      "slug": "aec-atp-ozabar-juafic-2026-06-30",
+      "title": "Ozan Baris vs. Juan Pablo Ficovich",
+      "team_abbr": "juafic",
+      "ask": 0.44,
+      "taker_fee": 0.0044
+    },
+    {
+      "slug": "aec-atp-dhasur-liadra-2026-06-30",
+      "title": "Dhakshineswar Suresh vs. Liam Draxl",
+      "team_abbr": "dhasur",
+      "ask": 0.41,
+      "taker_fee": 0.0041
+    },
+    {
+      "slug": "aec-atp-dhasur-liadra-2026-06-30",
+      "title": "Dhakshineswar Suresh vs. Liam Draxl",
+      "team_abbr": "liadra",
+      "ask": 0.61,
+      "taker_fee": 0.0061
+    },
+    {
+      "slug": "aec-atp-andned-fraron-2026-07-01",
+      "title": "Andrej Nedic vs. Franco Roncadelli",
+      "team_abbr": "andned",
+      "ask": 0.84,
+      "taker_fee": 0.0084
+    },
+    {
+      "slug": "aec-atp-andned-fraron-2026-07-01",
+      "title": "Andrej Nedic vs. Franco Roncadelli",
+      "team_abbr": "fraron",
+      "ask": 0.35,
+      "taker_fee": 0.0035
+    },
+    {
+      "slug": "aec-atp-gushei-alebar-2026-07-01",
+      "title": "Gustavo Heide vs. Alex Barrena",
+      "team_abbr": "gushei",
+      "ask": 0.97,
+      "taker_fee": 0.0097
+    },
+    {
+      "slug": "aec-atp-gushei-alebar-2026-07-01",
+      "title": "Gustavo Heide vs. Alex Barrena",
+      "team_abbr": "alebar",
+      "ask": 0.22,
+      "taker_fee": 0.0022
+    },
+    {
+      "slug": "aec-atp-makkas-andsan-2026-06-30",
+      "title": "Maks Kasnikowski vs. Andres Santamarta",
+      "team_abbr": "makkas",
+      "ask": 0.73,
+      "taker_fee": 0.0073
+    },
+    {
+      "slug": "aec-atp-makkas-andsan-2026-06-30",
+      "title": "Maks Kasnikowski vs. Andres Santamarta",
+      "team_abbr": "andsan",
+      "ask": 0.47,
+      "taker_fee": 0.0047
+    },
+    {
+      "slug": "aec-atp-marsha-domstr-2026-07-01",
+      "title": "Marat Sharipov vs. Dominic Stephan Stricker",
+      "team_abbr": "marsha",
+      "ask": 0.48,
+      "taker_fee": 0.0048
+    },
+    {
+      "slug": "aec-atp-marsha-domstr-2026-07-01",
+      "title": "Marat Sharipov vs. Dominic Stephan Stricker",
+      "team_abbr": "domstr",
+      "ask": 0.98,
+      "taker_fee": 0.0098
+    },
+    {
+      "slug": "aec-atp-hubhur-sebofn-2026-07-01",
+      "title": "Hubert Hurkacz vs. Sebastian Ofner",
+      "team_abbr": "hubhur",
+      "ask": 0.74,
+      "taker_fee": 0.0074
+    },
+    {
+      "slug": "aec-atp-hubhur-sebofn-2026-07-01",
+      "title": "Hubert Hurkacz vs. Sebastian Ofner",
+      "team_abbr": "sebofn",
+      "ask": 0.27,
+      "taker_fee": 0.0027
+    },
+    {
+      "slug": "aec-atp-romsaf-botzan-2026-06-30",
+      "title": "Roman Safiullin vs. Botic van de Zandschulp",
+      "team_abbr": "romsaf",
+      "ask": 0.56,
+      "taker_fee": 0.0056
+    },
+    {
+      "slug": "aec-atp-romsaf-botzan-2026-06-30",
+      "title": "Roman Safiullin vs. Botic van de Zandschulp",
+      "team_abbr": "botzan",
+      "ask": 0.45,
+      "taker_fee": 0.0045
+    },
+    {
+      "slug": "aec-atp-nicmej-miczhe-2026-07-01",
+      "title": "Nicolas Mejia vs. Michael Zheng",
+      "team_abbr": "nicmej",
+      "ask": 0.23,
+      "taker_fee": 0.0023
+    },
+    {
+      "slug": "aec-atp-nicmej-miczhe-2026-07-01",
+      "title": "Nicolas Mejia vs. Michael Zheng",
+      "team_abbr": "miczhe",
+      "ask": 0.78,
+      "taker_fee": 0.0078
+    },
+    {
+      "slug": "aec-atp-felaug-dinpri-2026-07-01",
+      "title": "Felix Auger-Aliassime vs. Dino Prizmic",
+      "team_abbr": "felaug",
+      "ask": 0.825,
+      "taker_fee": 0.00825
+    },
+    {
+      "slug": "aec-atp-felaug-dinpri-2026-07-01",
+      "title": "Felix Auger-Aliassime vs. Dino Prizmic",
+      "team_abbr": "dinpri",
+      "ask": 0.18,
+      "taker_fee": 0.0018
+    },
+    {
+      "slug": "aec-atp-alefok-fabmar-2026-06-30",
+      "title": "Alejandro Davidovich Fokina vs. Fabian Marozsan",
+      "team_abbr": "alefok",
+      "ask": 0.69,
+      "taker_fee": 0.0069
+    },
+    {
+      "slug": "aec-atp-alefok-fabmar-2026-06-30",
+      "title": "Alejandro Davidovich Fokina vs. Fabian Marozsan",
+      "team_abbr": "fabmar",
+      "ask": 0.325,
+      "taker_fee": 0.00325
+    },
+    {
+      "slug": "aec-atp-artrin-mardam-2026-06-30",
+      "title": "Arthur Rinderknech vs. Martin Damm",
+      "team_abbr": "artrin",
+      "ask": 0.575,
+      "taker_fee": 0.00575
+    },
+    {
+      "slug": "aec-atp-artrin-mardam-2026-06-30",
+      "title": "Arthur Rinderknech vs. Martin Damm",
+      "team_abbr": "mardam",
+      "ask": 0.43,
+      "taker_fee": 0.0043
+    },
+    {
+      "slug": "aec-atp-stetsi-novdjo-2026-07-01",
+      "title": "Stefanos Tsitsipas vs. Novak Djokovic",
+      "team_abbr": "stetsi",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "slug": "aec-atp-stetsi-novdjo-2026-07-01",
+      "title": "Stefanos Tsitsipas vs. Novak Djokovic",
+      "team_abbr": "novdjo",
+      "ask": 0.86,
+      "taker_fee": 0.0086
+    },
+    {
+      "slug": "aec-atp-danagu-danmed-2026-06-30",
+      "title": "Daniel Merida Aguilar vs. Daniil Medvedev",
+      "team_abbr": "danagu",
+      "ask": 0.05,
+      "taker_fee": 0.0005
+    },
+    {
+      "slug": "aec-atp-danagu-danmed-2026-06-30",
+      "title": "Daniel Merida Aguilar vs. Daniil Medvedev",
+      "team_abbr": "danmed",
+      "ask": 0.955,
+      "taker_fee": 0.00955
+    },
+    {
+      "slug": "aec-wta-anhkal-kamrak-2026-06-29",
+      "title": "Anhelina Kalinina vs. Kamilla Rakhimova",
+      "team_abbr": "anhkal",
+      "ask": 0.57,
+      "taker_fee": 0.0057
+    },
+    {
+      "slug": "aec-wta-anhkal-kamrak-2026-06-29",
+      "title": "Anhelina Kalinina vs. Kamilla Rakhimova",
+      "team_abbr": "kamrak",
+      "ask": 0.44,
+      "taker_fee": 0.0044
+    },
+    {
+      "slug": "aec-wta-marsak-clatau-2026-06-29",
+      "title": "Maria Sakkari vs. Clara Tauson",
+      "team_abbr": "marsak",
+      "ask": 0.37,
+      "taker_fee": 0.0037
+    },
+    {
+      "slug": "aec-wta-marsak-clatau-2026-06-29",
+      "title": "Maria Sakkari vs. Clara Tauson",
+      "team_abbr": "clatau",
+      "ask": 0.64,
+      "taker_fee": 0.0064
+    },
+    {
+      "slug": "aec-wta-talgib-marbou-2026-06-29",
+      "title": "Talia Gibson vs. Marie Bouzkova",
+      "team_abbr": "talgib",
+      "ask": 0.23,
+      "taker_fee": 0.0023
+    },
+    {
+      "slug": "aec-wta-talgib-marbou-2026-06-29",
+      "title": "Talia Gibson vs. Marie Bouzkova",
+      "team_abbr": "marbou",
+      "ask": 0.78,
+      "taker_fee": 0.0078
+    },
+    {
+      "slug": "aec-wta-iribeg-katswa-2026-06-29",
+      "title": "Irina-Camelia Begu vs. Katie Swan",
+      "team_abbr": "iribeg",
+      "ask": 0.53,
+      "taker_fee": 0.0053
+    },
+    {
+      "slug": "aec-wta-iribeg-katswa-2026-06-29",
+      "title": "Irina-Camelia Begu vs. Katie Swan",
+      "team_abbr": "katswa",
+      "ask": 0.48,
+      "taker_fee": 0.0048
+    },
+    {
+      "slug": "aec-wta-petmar-sofken-2026-06-29",
+      "title": "Petra Marcinko vs. Sofia Kenin",
+      "team_abbr": "petmar",
+      "ask": 0.55,
+      "taker_fee": 0.0055
+    },
+    {
+      "slug": "aec-wta-petmar-sofken-2026-06-29",
+      "title": "Petra Marcinko vs. Sofia Kenin",
+      "team_abbr": "sofken",
+      "ask": 0.46,
+      "taker_fee": 0.0046
+    },
+    {
+      "slug": "aec-wta-amaani-lingjo-2026-06-29",
+      "title": "Amanda Anisimova vs. Lina Gjorcheska",
+      "team_abbr": "amaani",
+      "ask": 0.96,
+      "taker_fee": 0.0096
+    },
+    {
+      "slug": "aec-wta-amaani-lingjo-2026-06-29",
+      "title": "Amanda Anisimova vs. Lina Gjorcheska",
+      "team_abbr": "lingjo",
+      "ask": 0.05,
+      "taker_fee": 0.0005
+    },
+    {
+      "slug": "aec-wta-terval-karpli-2026-06-29",
+      "title": "Tereza Valentova vs. Karolina Pliskova",
+      "team_abbr": "terval",
+      "ask": 0.34,
+      "taker_fee": 0.0034
+    },
+    {
+      "slug": "aec-wta-terval-karpli-2026-06-29",
+      "title": "Tereza Valentova vs. Karolina Pliskova",
+      "team_abbr": "karpli",
+      "ask": 0.67,
+      "taker_fee": 0.0067
+    },
+    {
+      "slug": "aec-wta-jaspao-robmon-2026-06-29",
+      "title": "Jasmine Paolini vs. Robin Montgomery",
+      "team_abbr": "jaspao",
+      "ask": 0.28,
+      "taker_fee": 0.0028
+    },
+    {
+      "slug": "aec-wta-jaspao-robmon-2026-06-29",
+      "title": "Jasmine Paolini vs. Robin Montgomery",
+      "team_abbr": "robmon",
+      "ask": 0.73,
+      "taker_fee": 0.0073
+    },
+    {
+      "slug": "aec-wta-katbou-tyrgra-2026-06-29",
+      "title": "Katie Boulter vs. Tyra Caterina Grant",
+      "team_abbr": "katbou",
+      "ask": 0.74,
+      "taker_fee": 0.0074
+    },
+    {
+      "slug": "aec-wta-katbou-tyrgra-2026-06-29",
+      "title": "Katie Boulter vs. Tyra Caterina Grant",
+      "team_abbr": "tyrgra",
+      "ask": 0.27,
+      "taker_fee": 0.0027
+    },
+    {
+      "slug": "aec-wta-kayday-madkey-2026-06-29",
+      "title": "Kayla Day vs. Madison Keys",
+      "team_abbr": "kayday",
+      "ask": 0.08,
+      "taker_fee": 0.0008
+    },
+    {
+      "slug": "aec-wta-kayday-madkey-2026-06-29",
+      "title": "Kayla Day vs. Madison Keys",
+      "team_abbr": "madkey",
+      "ask": 0.93,
+      "taker_fee": 0.0093
+    },
+    {
+      "slug": "aec-wta-kimbir-alikor-2026-06-29",
+      "title": "Kimberly Birrell vs. Alina Korneeva",
+      "team_abbr": "kimbir",
+      "ask": 0.51,
+      "taker_fee": 0.0051
+    },
+    {
+      "slug": "aec-wta-kimbir-alikor-2026-06-29",
+      "title": "Kimberly Birrell vs. Alina Korneeva",
+      "team_abbr": "alikor",
+      "ask": 0.5,
+      "taker_fee": 0.005
+    },
+    {
+      "slug": "aec-wta-beamai-martim-2026-06-29",
+      "title": "Beatriz Haddad Maia vs. Maria Timofeeva",
+      "team_abbr": "beamai",
+      "ask": 0.31,
+      "taker_fee": 0.0031
+    },
+    {
+      "slug": "aec-wta-beamai-martim-2026-06-29",
+      "title": "Beatriz Haddad Maia vs. Maria Timofeeva",
+      "team_abbr": "martim",
+      "ask": 0.7,
+      "taker_fee": 0.007
+    },
+    {
+      "slug": "aec-wta-iryshy-vikgol-2026-06-29",
+      "title": "Iryna Shymanovich vs. Viktorija Golubic",
+      "team_abbr": "iryshy",
+      "ask": 0.25,
+      "taker_fee": 0.0025
+    },
+    {
+      "slug": "aec-wta-iryshy-vikgol-2026-06-29",
+      "title": "Iryna Shymanovich vs. Viktorija Golubic",
+      "team_abbr": "vikgol",
+      "ask": 0.76,
+      "taker_fee": 0.0076
+    },
+    {
+      "slug": "aec-wta-taytow-igaswi-2026-06-29",
+      "title": "Taylor Townsend vs. Iga Swiatek",
+      "team_abbr": "taytow",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "slug": "aec-wta-taytow-igaswi-2026-06-29",
+      "title": "Taylor Townsend vs. Iga Swiatek",
+      "team_abbr": "igaswi",
+      "ask": 0.86,
+      "taker_fee": 0.0086
+    },
+    {
+      "slug": "aec-wta-okssel-sinkra-2026-06-29",
+      "title": "Oksana Selekhmeteva vs. Sinja Kraus",
+      "team_abbr": "okssel",
+      "ask": 0.47,
+      "taker_fee": 0.0047
+    },
+    {
+      "slug": "aec-wta-okssel-sinkra-2026-06-29",
+      "title": "Oksana Selekhmeteva vs. Sinja Kraus",
+      "team_abbr": "sinkra",
+      "ask": 0.54,
+      "taker_fee": 0.0054
+    },
+    {
+      "slug": "aec-wta-yulsta-annbli-2026-06-29",
+      "title": "Yulia Starodubtseva vs. Anna Blinkova",
+      "team_abbr": "yulsta",
+      "ask": 0.57,
+      "taker_fee": 0.0057
+    },
+    {
+      "slug": "aec-wta-yulsta-annbli-2026-06-29",
+      "title": "Yulia Starodubtseva vs. Anna Blinkova",
+      "team_abbr": "annbli",
+      "ask": 0.44,
+      "taker_fee": 0.0044
+    },
+    {
+      "slug": "aec-wta-emmnav-paubad-2026-06-29",
+      "title": "Emma Navarro vs. Paula Badosa",
+      "team_abbr": "emmnav",
+      "ask": 0.62,
+      "taker_fee": 0.0062
+    },
+    {
+      "slug": "aec-wta-emmnav-paubad-2026-06-29",
+      "title": "Emma Navarro vs. Paula Badosa",
+      "team_abbr": "paubad",
+      "ask": 0.39,
+      "taker_fee": 0.0039
+    },
+    {
+      "slug": "aec-wta-elisvi-darsni-2026-06-29",
+      "title": "Elina Svitolina vs. Daria Snigur",
+      "team_abbr": "elisvi",
+      "ask": 0.74,
+      "taker_fee": 0.0074
+    },
+    {
+      "slug": "aec-wta-elisvi-darsni-2026-06-29",
+      "title": "Elina Svitolina vs. Daria Snigur",
+      "team_abbr": "darsni",
+      "ask": 0.27,
+      "taker_fee": 0.0027
+    },
+    {
+      "slug": "aec-wta-vererj-leojea-2026-06-29",
+      "title": "Veronika Erjavec vs. Leolia Jeanjean",
+      "team_abbr": "vererj",
+      "ask": 0.37,
+      "taker_fee": 0.0037
+    },
+    {
+      "slug": "aec-wta-vererj-leojea-2026-06-29",
+      "title": "Veronika Erjavec vs. Leolia Jeanjean",
+      "team_abbr": "leojea",
+      "ask": 0.64,
+      "taker_fee": 0.0064
+    },
+    {
+      "slug": "aec-wta-aleeal-renzar-2026-06-29",
+      "title": "Alexandra Eala vs. Renata Zarazua",
+      "team_abbr": "aleeal",
+      "ask": 0.86,
+      "taker_fee": 0.0086
+    },
+    {
+      "slug": "aec-wta-aleeal-renzar-2026-06-29",
+      "title": "Alexandra Eala vs. Renata Zarazua",
+      "team_abbr": "renzar",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "slug": "aec-wta-sorcir-sarbej-2026-06-29",
+      "title": "Sorana Cirstea vs. Sara Bejlek",
+      "team_abbr": "sorcir",
+      "ask": 0.72,
+      "taker_fee": 0.0072
+    },
+    {
+      "slug": "aec-wta-sorcir-sarbej-2026-06-29",
+      "title": "Sorana Cirstea vs. Sara Bejlek",
+      "team_abbr": "sarbej",
+      "ask": 0.29,
+      "taker_fee": 0.0029
+    },
+    {
+      "slug": "aec-wta-gabrus-catmcn-2026-06-29",
+      "title": "Gabriela Ruse vs. Caty McNally",
+      "team_abbr": "gabrus",
+      "ask": 0.58,
+      "taker_fee": 0.0058
+    },
+    {
+      "slug": "aec-wta-gabrus-catmcn-2026-06-29",
+      "title": "Gabriela Ruse vs. Caty McNally",
+      "team_abbr": "catmcn",
+      "ask": 0.43,
+      "taker_fee": 0.0043
+    },
+    {
+      "slug": "aec-wta-elimer-lausie-2026-06-29",
+      "title": "Elise Mertens vs. Laura Siegemund",
+      "team_abbr": "elimer",
+      "ask": 0.75,
+      "taker_fee": 0.0075
+    },
+    {
+      "slug": "aec-wta-elimer-lausie-2026-06-29",
+      "title": "Elise Mertens vs. Laura Siegemund",
+      "team_abbr": "lausie",
+      "ask": 0.26,
+      "taker_fee": 0.0026
+    },
+    {
+      "slug": "aec-wta-loiboi-eleryb-2026-06-29",
+      "title": "Lois Boisson vs. Elena Rybakina",
+      "team_abbr": "loiboi",
+      "ask": 0.03,
+      "taker_fee": 0.0003
+    },
+    {
+      "slug": "aec-wta-loiboi-eleryb-2026-06-29",
+      "title": "Lois Boisson vs. Elena Rybakina",
+      "team_abbr": "eleryb",
+      "ask": 0.98,
+      "taker_fee": 0.0098
+    },
+    {
+      "slug": "aec-wta-nadpod-markos-2026-06-29",
+      "title": "Nadia Podoroska vs. Marta Kostyuk",
+      "team_abbr": "nadpod",
+      "ask": 0.03,
+      "taker_fee": 0.0003
+    },
+    {
+      "slug": "aec-wta-nadpod-markos-2026-06-29",
+      "title": "Nadia Podoroska vs. Marta Kostyuk",
+      "team_abbr": "markos",
+      "ask": 0.98,
+      "taker_fee": 0.0098
+    },
+    {
+      "slug": "aec-wta-polkud-liusam-2026-06-29",
+      "title": "Polina Kudermetova vs. Liudmila Samsonova",
+      "team_abbr": "polkud",
+      "ask": 0.35,
+      "taker_fee": 0.0035
+    },
+    {
+      "slug": "aec-wta-polkud-liusam-2026-06-29",
+      "title": "Polina Kudermetova vs. Liudmila Samsonova",
+      "team_abbr": "liusam",
+      "ask": 0.66,
+      "taker_fee": 0.0066
+    },
+    {
+      "slug": "aec-wta-ajltom-marbol-2026-06-29",
+      "title": "Ajla Tomljanovic vs. Mariam Bolkvadze",
+      "team_abbr": "ajltom",
+      "ask": 0.86,
+      "taker_fee": 0.0086
+    },
+    {
+      "slug": "aec-wta-ajltom-marbol-2026-06-29",
+      "title": "Ajla Tomljanovic vs. Mariam Bolkvadze",
+      "team_abbr": "marbol",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "slug": "aec-wta-camoso-simwal-2026-06-29",
+      "title": "Camila Osorio vs. Simona Waltert",
+      "team_abbr": "camoso",
+      "ask": 0.64,
+      "taker_fee": 0.0064
+    },
+    {
+      "slug": "aec-wta-camoso-simwal-2026-06-29",
+      "title": "Camila Osorio vs. Simona Waltert",
+      "team_abbr": "simwal",
+      "ask": 0.37,
+      "taker_fee": 0.0037
+    },
+    {
+      "slug": "aec-wta-diashn-evalys-2026-06-29",
+      "title": "Diana Shnaider vs. Eva Lys",
+      "team_abbr": "diashn",
+      "ask": 0.66,
+      "taker_fee": 0.0066
+    },
+    {
+      "slug": "aec-wta-diashn-evalys-2026-06-29",
+      "title": "Diana Shnaider vs. Eva Lys",
+      "team_abbr": "evalys",
+      "ask": 0.35,
+      "taker_fee": 0.0035
+    },
+    {
+      "slug": "aec-wta-ashkru-donvek-2026-06-29",
+      "title": "Ashlyn Krueger vs. Donna Vekic",
+      "team_abbr": "ashkru",
+      "ask": 0.41,
+      "taker_fee": 0.0041
+    },
+    {
+      "slug": "aec-wta-ashkru-donvek-2026-06-29",
+      "title": "Ashlyn Krueger vs. Donna Vekic",
+      "team_abbr": "donvek",
+      "ask": 0.6,
+      "taker_fee": 0.006
+    },
+    {
+      "slug": "aec-wta-serwil-mayjoi-2026-06-29",
+      "title": "Serena Williams vs. Maya Joint",
+      "team_abbr": "serwil",
+      "ask": 0.45,
+      "taker_fee": 0.0045
+    },
+    {
+      "slug": "aec-wta-serwil-mayjoi-2026-06-29",
+      "title": "Serena Williams vs. Maya Joint",
+      "team_abbr": "mayjoi",
+      "ask": 0.57,
+      "taker_fee": 0.0057
+    },
+    {
+      "slug": "aec-wta-ellsei-linnos-2026-06-29",
+      "title": "Ella Seidel vs. Linda Noskova",
+      "team_abbr": "ellsei",
+      "ask": 0.12,
+      "taker_fee": 0.0012
+    },
+    {
+      "slug": "aec-wta-ellsei-linnos-2026-06-29",
+      "title": "Ella Seidel vs. Linda Noskova",
+      "team_abbr": "linnos",
+      "ask": 0.89,
+      "taker_fee": 0.0089
+    },
+    {
+      "slug": "aec-wta-jespeg-sartor-2026-06-30",
+      "title": "Jessica Pegula vs. Sara Sorribes Tormo",
+      "team_abbr": "jespeg",
+      "ask": 0.93,
+      "taker_fee": 0.0093
+    },
+    {
+      "slug": "aec-wta-jespeg-sartor-2026-06-30",
+      "title": "Jessica Pegula vs. Sara Sorribes Tormo",
+      "team_abbr": "sartor",
+      "ask": 0.08,
+      "taker_fee": 0.0008
+    },
+    {
+      "slug": "aec-wta-tatmar-ivajov-2026-06-30",
+      "title": "Tatjana Maria vs. Iva Jovic",
+      "team_abbr": "tatmar",
+      "ask": 0.28,
+      "taker_fee": 0.0028
+    },
+    {
+      "slug": "aec-wta-tatmar-ivajov-2026-06-30",
+      "title": "Tatjana Maria vs. Iva Jovic",
+      "team_abbr": "ivajov",
+      "ask": 0.73,
+      "taker_fee": 0.0073
+    },
+    {
+      "slug": "aec-wta-belben-xinwan-2026-07-01",
+      "title": "Belinda Bencic vs. Xinyu Wang",
+      "team_abbr": "belben",
+      "ask": 0.74,
+      "taker_fee": 0.0074
+    },
+    {
+      "slug": "aec-wta-belben-xinwan-2026-07-01",
+      "title": "Belinda Bencic vs. Xinyu Wang",
+      "team_abbr": "xinwan",
+      "ask": 0.27,
+      "taker_fee": 0.0027
+    },
+    {
+      "slug": "aec-wta-alypar-mansaw-2026-06-30",
+      "title": "Alycia Parks vs. Mananchaya Sawangkaew",
+      "team_abbr": "alypar",
+      "ask": 0.59,
+      "taker_fee": 0.0059
+    },
+    {
+      "slug": "aec-wta-alypar-mansaw-2026-06-30",
+      "title": "Alycia Parks vs. Mananchaya Sawangkaew",
+      "team_abbr": "mansaw",
+      "ask": 0.42,
+      "taker_fee": 0.0042
+    },
+    {
+      "slug": "aec-wta-jelost-antruz-2026-07-01",
+      "title": "Jelena Ostapenko vs. Antonia Ruzic",
+      "team_abbr": "jelost",
+      "ask": 0.77,
+      "taker_fee": 0.0077
+    },
+    {
+      "slug": "aec-wta-jelost-antruz-2026-07-01",
+      "title": "Jelena Ostapenko vs. Antonia Ruzic",
+      "team_abbr": "antruz",
+      "ask": 0.24,
+      "taker_fee": 0.0024
+    },
+    {
+      "slug": "aec-wta-zeyson-claliu-2026-07-01",
+      "title": "Zeynep Sonmez vs. Claire Liu",
+      "team_abbr": "zeyson",
+      "ask": 0.65,
+      "taker_fee": 0.0065
+    },
+    {
+      "slug": "aec-wta-zeyson-claliu-2026-07-01",
+      "title": "Zeynep Sonmez vs. Claire Liu",
+      "team_abbr": "claliu",
+      "ask": 0.36,
+      "taker_fee": 0.0036
+    },
+    {
+      "slug": "aec-wta-arysab-mcckes-2026-06-30",
+      "title": "Aryna Sabalenka vs. McCartney Kessler",
+      "team_abbr": "arysab",
+      "ask": 0.88,
+      "taker_fee": 0.0088
+    },
+    {
+      "slug": "aec-wta-arysab-mcckes-2026-06-30",
+      "title": "Aryna Sabalenka vs. McCartney Kessler",
+      "team_abbr": "mcckes",
+      "ask": 0.125,
+      "taker_fee": 0.00125
+    },
+    {
+      "slug": "aec-wta-jantje-darkas-2026-06-30",
+      "title": "Janice Tjen vs. Daria Kasatkina",
+      "team_abbr": "jantje",
+      "ask": 0.465,
+      "taker_fee": 0.00465
+    },
+    {
+      "slug": "aec-wta-jantje-darkas-2026-06-30",
+      "title": "Janice Tjen vs. Daria Kasatkina",
+      "team_abbr": "darkas",
+      "ask": 0.545,
+      "taker_fee": 0.00545
+    },
+    {
+      "slug": "aec-wta-karmuc-shuzha-2026-06-30",
+      "title": "Karolina Muchova vs. Shuai Zhang",
+      "team_abbr": "karmuc",
+      "ask": 0.855,
+      "taker_fee": 0.00855
+    },
+    {
+      "slug": "aec-wta-karmuc-shuzha-2026-06-30",
+      "title": "Karolina Muchova vs. Shuai Zhang",
+      "team_abbr": "shuzha",
+      "ask": 0.15,
+      "taker_fee": 0.0015
+    },
+    {
+      "slug": "aec-wta-ekaale-lantar-2026-06-30",
+      "title": "Ekaterina Alexandrova vs. Lanlana Tararudee",
+      "team_abbr": "ekaale",
+      "ask": 0.82,
+      "taker_fee": 0.0082
+    },
+    {
+      "slug": "aec-wta-ekaale-lantar-2026-06-30",
+      "title": "Ekaterina Alexandrova vs. Lanlana Tararudee",
+      "team_abbr": "lantar",
+      "ask": 0.19,
+      "taker_fee": 0.0019
+    },
+    {
+      "slug": "aec-wta-barkre-mirand-2026-07-01",
+      "title": "Barbora Krejcikova vs. Mirra Andreeva",
+      "team_abbr": "barkre",
+      "ask": 0.335,
+      "taker_fee": 0.00335
+    },
+    {
+      "slug": "aec-wta-barkre-mirand-2026-07-01",
+      "title": "Barbora Krejcikova vs. Mirra Andreeva",
+      "team_abbr": "mirand",
+      "ask": 0.67,
+      "taker_fee": 0.0067
+    },
+    {
+      "slug": "aec-wta-anagas-naoosa-2026-07-01",
+      "title": "Anastasia Gasanova vs. Naomi Osaka",
+      "team_abbr": "anagas",
+      "ask": 0.075,
+      "taker_fee": 0.00075
+    },
+    {
+      "slug": "aec-wta-anagas-naoosa-2026-07-01",
+      "title": "Anastasia Gasanova vs. Naomi Osaka",
+      "team_abbr": "naoosa",
+      "ask": 0.93,
+      "taker_fee": 0.0093
+    },
+    {
+      "slug": "aec-wta-katsin-nikbar-2026-07-01",
+      "title": "Katerina Siniakova vs. Nikola Bartunkova",
+      "team_abbr": "katsin",
+      "ask": 0.61,
+      "taker_fee": 0.0061
+    },
+    {
+      "slug": "aec-wta-katsin-nikbar-2026-07-01",
+      "title": "Katerina Siniakova vs. Nikola Bartunkova",
+      "team_abbr": "nikbar",
+      "ask": 0.4,
+      "taker_fee": 0.004
+    },
+    {
+      "slug": "aec-wta-dayyas-jesman-2026-07-01",
+      "title": "Dayana Yastremska vs. Jessica Bouzas Maneiro",
+      "team_abbr": "dayyas",
+      "ask": 0.485,
+      "taker_fee": 0.00485
+    },
+    {
+      "slug": "aec-wta-dayyas-jesman-2026-07-01",
+      "title": "Dayana Yastremska vs. Jessica Bouzas Maneiro",
+      "team_abbr": "jesman",
+      "ask": 0.52,
+      "taker_fee": 0.0052
+    },
+    {
+      "slug": "aec-wta-diapar-annkal-2026-07-01",
+      "title": "Diane Parry vs. Anna Kalinskaya",
+      "team_abbr": "diapar",
+      "ask": 0.38,
+      "taker_fee": 0.0038
+    },
+    {
+      "slug": "aec-wta-diapar-annkal-2026-07-01",
+      "title": "Diane Parry vs. Anna Kalinskaya",
+      "team_abbr": "annkal",
+      "ask": 0.625,
+      "taker_fee": 0.00625
+    },
+    {
+      "slug": "aec-wta-solsie-cocgau-2026-06-30",
+      "title": "Solana Sierra vs. Coco Gauff",
+      "team_abbr": "solsie",
+      "ask": 0.16,
+      "taker_fee": 0.0016
+    },
+    {
+      "slug": "aec-wta-solsie-cocgau-2026-06-30",
+      "title": "Solana Sierra vs. Coco Gauff",
+      "team_abbr": "cocgau",
+      "ask": 0.845,
+      "taker_fee": 0.00845
+    }
+  ]
+}
