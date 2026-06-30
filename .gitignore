@@ -1,7 +1,7 @@
 .env
 __pycache__/
 *.pyc
-arb_log.jsonl
+*_log.jsonl
 .pytest_cache/
 kalshi.pem
 arb_scanner/debug/*.txt
