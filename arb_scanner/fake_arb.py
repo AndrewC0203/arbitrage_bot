@@ -82,7 +82,7 @@ SPORTS_CONFIGS = [
 KALSHI_WS_URL         = "wss://api.elections.kalshi.com/trade-api/ws/v2"
 KALSHI_BASE           = "https://api.elections.kalshi.com/trade-api/v2"
 POLYMARKET_US_GATEWAY = "https://gateway.polymarket.us"
-ARB_THRESHOLD         = 0.99  # FAKE ARB: raw price sum threshold (no fees), sanity-check mode
+ARB_THRESHOLD         = 1.05  # FAKE ARB: raw price sum threshold (no fees), sanity-check mode
 KALSHI_TAKER_FEE_RATE = 0.0   # FAKE ARB: fees zeroed so threshold is raw price sum
 POLYMARKET_TAKER_FEE_RATE = 0.0
 POLY_POLL_SECONDS     = 2
@@ -1115,14 +1115,17 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
         sys.stdout.flush()
 
     ts = now.strftime("%H:%M:%S")
-    if not matches and not active:
-        global _last_status_log
-        if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
-            _last_status_log = time.time()
-            sys.stdout.write(
-                f"\r[{ts}][WS] No ML arb — {len(kalshi_markets)}K/{len(poly_markets)}P markets.".ljust(120) + "\r"
-            )
-            sys.stdout.flush()
+    global _last_status_log
+    if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
+        _last_status_log = time.time()
+        arb_count = sum(1 for m in matches if m["is_arb"])
+        best = min((m["total_cost"] for m in matches), default=None)
+        best_s = f" best={best:.4f}" if best else ""
+        sys.stdout.write(
+            f"\r[{ts}][WS] {arb_count} arbs / {len(matches)} pairs "
+            f"({len(kalshi_markets)}K/{len(poly_markets)}P){best_s} threshold={ARB_THRESHOLD}".ljust(120) + "\r"
+        )
+        sys.stdout.flush()
 
 
 # ─── WS Subscribe Helper ───────────────────────────────────────────────────────
