@@ -2,7 +2,7 @@ name: Claude PR Reviewer
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]
   issue_comment:
     types: [created]
 
@@ -25,10 +25,12 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          show_full_output: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: |
             --model claude-haiku-4-5
-            --max-turns 5
+            --max-turns 8
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
