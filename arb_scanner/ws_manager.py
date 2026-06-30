@@ -1115,6 +1115,80 @@ async def _poly_props_polling_task() -> None:
 # (Each market slug has one YES and one NO side; WS bestAsk is the ask for the YES side,
 #  and the NO ask = 1 - bestBid. We store both after each WS update.)
 
+async def _seed_one_ml_league(
+    session: aiohttp.ClientSession,
+    league_slug: str,
+    smt: str,
+    now: datetime,
+) -> list[str]:
+    """Fetch one Polymarket league's events and populate _poly_ws_ml_token_map. Returns market slugs."""
+    slugs: list[str] = []
+    try:
+        async with session.get(
+            f"{POLYMARKET_US_GATEWAY}/v2/leagues/{league_slug}/events",
+            params={"limit": 100},
+            timeout=REQUEST_TIMEOUT,
+        ) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+
+        for event in data.get("events", []):
+            for m in event.get("markets", []):
+                try:
+                    if m.get("sportsMarketType") != smt:
+                        continue
+                    if not m.get("active") or m.get("closed") or m.get("archived"):
+                        continue
+                    slug_m = m.get("slug", "")
+                    if not slug_m:
+                        continue
+
+                    yes_ask = no_ask = None
+                    yes_abbr = no_abbr = None
+                    yes_name = no_name = None
+                    for side in m.get("marketSides", []):
+                        team = side.get("team", {})
+                        abbr = team.get("abbreviation", "")
+                        if not abbr:
+                            abbr = side.get("participant", "")
+                        abbr = abbr.lower()
+                        display = normalize_name(
+                            team.get("displayName", "") or team.get("name", "") or abbr
+                        )
+                        quote = side.get("quote") or {}
+                        try:
+                            ask = float(quote.get("value", 0))
+                        except (TypeError, ValueError):
+                            ask = 0.0
+                        if side.get("long") is True:
+                            yes_ask = ask if 0 < ask < 1 else None
+                            yes_abbr = abbr
+                            yes_name = display
+                        else:
+                            no_ask = ask if 0 < ask < 1 else None
+                            no_abbr = abbr
+                            no_name = display
+
+                    _poly_ws_ml_token_map[slug_m] = {
+                        "slug": slug_m,
+                        "title": m.get("question") or slug_m,
+                        "yes_abbr": yes_abbr,
+                        "no_abbr": no_abbr,
+                        "yes_name": yes_name,
+                        "no_name": no_name,
+                        "yes_ask": yes_ask,
+                        "no_ask": no_ask,
+                        "raw": m,
+                        "updated_at": now,
+                    }
+                    slugs.append(slug_m)
+                except (TypeError, ValueError, KeyError):
+                    continue
+    except Exception as exc:
+        print(f"[POLY-WS] ML REST seed error for {league_slug}: {exc}", file=sys.stderr)
+    return slugs
+
+
 async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[str], list[str]]:
     """
     Fetch Polymarket markets via REST, populate slug-keyed WS maps, and return
@@ -1124,81 +1198,19 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
     global _poly_ws_ml_token_map, _poly_ws_props_token_map
 
     now = datetime.now(timezone.utc)
-    ml_slugs: list[str] = []
+
+    # ── Moneyline markets — all league slugs fetched concurrently ──
+    slug_to_smt = {
+        slug: cfg["poly_smt"]
+        for cfg in SPORTS_CONFIGS
+        for slug in cfg["poly_slugs"]
+    }
+    slug_lists = await asyncio.gather(*[
+        _seed_one_ml_league(session, league_slug, smt, now)
+        for league_slug, smt in slug_to_smt.items()
+    ])
+    ml_slugs: list[str] = [s for sublist in slug_lists for s in sublist]
     props_slugs: list[str] = []
-
-    # ── Moneyline markets ──
-    slug_to_smt = {}
-    for cfg in SPORTS_CONFIGS:
-        for slug in cfg["poly_slugs"]:
-            slug_to_smt[slug] = cfg["poly_smt"]
-
-    for slug, smt in slug_to_smt.items():
-        try:
-            async with session.get(
-                f"{POLYMARKET_US_GATEWAY}/v2/leagues/{slug}/events",
-                params={"limit": 100},
-                timeout=REQUEST_TIMEOUT,
-            ) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-
-            for event in data.get("events", []):
-                for m in event.get("markets", []):
-                    try:
-                        if m.get("sportsMarketType") != smt:
-                            continue
-                        if not m.get("active") or m.get("closed") or m.get("archived"):
-                            continue
-                        slug_m = m.get("slug", "")
-                        if not slug_m:
-                            continue
-                        
-                        yes_ask = no_ask = None
-                        yes_abbr = no_abbr = None
-                        yes_name = no_name = None
-                        for side in m.get("marketSides", []):
-                            team = side.get("team", {})
-                            abbr = team.get("abbreviation", "")
-                            if not abbr:
-                                abbr = side.get("participant", "")
-                            abbr = abbr.lower()
-                            display = normalize_name(
-                                team.get("displayName", "") or team.get("name", "") or abbr
-                            )
-
-                            quote = side.get("quote") or {}
-                            try:
-                                ask = float(quote.get("value", 0))
-                            except (TypeError, ValueError):
-                                ask = 0.0
-
-                            if side.get("long") is True:
-                                yes_ask = ask if 0 < ask < 1 else None
-                                yes_abbr = abbr
-                                yes_name = display
-                            else:
-                                no_ask = ask if 0 < ask < 1 else None
-                                no_abbr = abbr
-                                no_name = display
-
-                        _poly_ws_ml_token_map[slug_m] = {
-                            "slug": slug_m,
-                            "title": m.get("question") or slug_m,
-                            "yes_abbr": yes_abbr,
-                            "no_abbr": no_abbr,
-                            "yes_name": yes_name,
-                            "no_name": no_name,
-                            "yes_ask": yes_ask,
-                            "no_ask": no_ask,
-                            "raw": m,
-                            "updated_at": now,
-                        }
-                        ml_slugs.append(slug_m)
-                    except (TypeError, ValueError, KeyError):
-                        continue
-        except Exception as exc:
-            print(f"[POLY-WS] ML REST seed error for {slug}: {exc}", file=sys.stderr)
 
     # ── Props markets ──
     loop = asyncio.get_running_loop()
