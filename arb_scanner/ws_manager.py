@@ -1573,18 +1573,27 @@ def _reconstruct_poly_props_list() -> list[dict]:
 
 def _run_props_arb_check_from_ws() -> None:
     """Trigger props arb check using current WS cache + Kalshi price cache."""
+    global _last_status_log
     now_utc = datetime.now(timezone.utc)
     _price_cache.purge_old_date(now_utc.date())
     kalshi_props = _price_cache.as_props_list(now_utc)
-    if not kalshi_props:
-        return
     poly_props = _reconstruct_poly_props_list()
+
+    if not kalshi_props:
+        if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
+            _last_status_log = time.time()
+            ts = now_utc.strftime("%H:%M:%S")
+            sys.stdout.write(
+                f"\r[{ts}][POLY-WS] No props arb — 0K/{len(poly_props)}P props (Kalshi cache stale).".ljust(100) + "\r"
+            )
+            sys.stdout.flush()
+        return
+
     arbs = match_props(kalshi_props, poly_props)
     timestamp = now_utc.isoformat()
     if arbs:
         _emit_prop_arbs(arbs, timestamp)
     else:
-        global _last_status_log
         if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
             _last_status_log = time.time()
             ts = now_utc.strftime("%H:%M:%S")
