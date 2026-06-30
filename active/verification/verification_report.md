@@ -1,38 +1,39 @@
 # Subagent Verification Report
 
-**Artifact**: `evaluate_cross_market_arb` in `arb_scanner/ws_manager.py`
-**Date**: 2026-06-30
+**Artifact**: ET→UTC game-time fix across `ws_manager.py`, `baseball.py`, `basketball.py`, `soccer.py`
+**Branch**: `claude/fix-match-markets-game-time`
+**Date**: 2026-06-29
 **Rounds**: 1
 
 ## Review Verdict: FIXED
 
 ## Issues Found
 
-| #  | Severity | Location                     | Problem                                                     | Status   |
-|----|----------|------------------------------|-------------------------------------------------------------|----------|
-| 1  | major    | `execute` condition          | `> 0.0` excluded break-even; spec says execute=False only if EV < $0 | Fixed |
-| 2  | major    | Fee rates (0.07 / 0.03)      | Differ from codebase constants (0.01) — intentional divergence undocumented | Declined (by design) |
-| 3  | major    | No hedge validation          | Prices summing >= 1.0 produce misleading positive EV        | Fixed (stderr warning) |
-| 4  | minor    | `bottleneck_size = 0`        | Zero-size trade would set execute=True after boundary fix   | Fixed (rolled into #1) |
-| 5  | minor    | `utc_now()` called twice     | Log and print timestamp could diverge under load            | Fixed |
-| 6  | minor    | Negative EV print format     | `$-0.25` looks odd; inconsistent with positive branch       | Fixed (`{:+.2f}`) |
-| 7  | nit      | Log rounding                 | Rounded values in log reduce fidelity for downstream parsers | Declined (acceptable) |
+| # | Severity | Location | Problem | Status |
+|---|----------|----------|---------|--------|
+| 1 | critical | `tests/test_baseball_matcher.py:32` | `ImportError` on `_kalshi_game_dt` (renamed); silenced 198 tests that appeared to pass | Fixed |
+| 2 | major | `tests/test_baseball_matcher.py:707-733` (D03) | Tests reconstructed the old broken two-step call rather than exercising the new function | Fixed — D01-D05 rewritten to call `_kalshi_game_dt_utc` and assert UTC output directly |
+| 3 | minor | `tests/test_baseball_matcher.py:685-694` (D01/D02) | Tested intermediate naive-datetime state that no longer exists as a public function | Fixed — replaced with UTC-asserting tests |
+| 4 | minor | `ws_manager.py:205-210` | `_kalshi_game_dt` kept alongside `_kalshi_game_dt_utc` with no comment; looks like a bug to fix | Fixed — added comment explaining intentional naive-UTC-tagging for date-only filtering in `today_tickers()` |
+| 5 | nit | `basketball.py:131`, `soccer.py:150` | Malformed tickers bypassed time guard (inconsistent with baseball/ws_manager) | Fixed — added early `continue` on `None`, updated test fixtures to valid ticker format |
 
 ## Simplifications Applied
 
-None — function was appropriately scoped.
+None — reviewer's suggestion to eliminate `_kalshi_game_dt` entirely by having `today_tickers()` call `_kalshi_game_dt_utc` was declined. It would change date-boundary behavior for tickers near midnight ET and the current approach is explicit and self-documenting.
 
-## Changes Made
+## Changes Made (vs. original implementation)
 
-- `execute = net_ev > 0.0` → `execute = net_ev >= 0.0 and bottleneck_size > 0`
-- Added hedge warning: `if poly_price + kalshi_price >= 1.0: print(..., file=sys.stderr)`
-- `ts = utc_now()` hoisted above `log_event`; `"timestamp": ts` passed in; both print branches reuse `ts`
-- Print format: `ev=+${net_ev:.2f}` → `ev={net_ev:+.2f}` in both branches
+1. **`tests/test_baseball_matcher.py`**: Fixed module-level import (`_kalshi_game_dt` → `_kalshi_game_dt_utc`). Rewrote D01–D05 to directly call `_kalshi_game_dt_utc` and assert on UTC hours/day. The 198 previously-uncollected tests now run.
+2. **`matchers/basketball.py`**: Added `if k_game_dt_utc is None: continue` before inner loop; removed `if k_game_dt_utc is not None:` guard inside the loop. Updated test fixtures to use valid ticker format (`KXNBA-26JUN281900LAKBOS-LAL`).
+3. **`matchers/soccer.py`**: Same pattern as basketball. Updated test fixtures.
+4. **`ws_manager.py`**: Added two-line comment above `_kalshi_game_dt` explaining its scope.
 
 ## Reviewer's Summary
 
-The function was structurally sound but had two operationally significant issues: the `execute` boundary off-by-one, and the `utc_now()` double-call creating log-correlation drift. The fee rates (0.07/0.03) were flagged as a mismatch vs. codebase constants — this is intentional (quadratic options-style fee schedule vs. flat taker fee) and is per the user-specified requirements.
+> The core ET→UTC conversion fix is correct — `dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc)` is the right pattern. However, the test suite had a critical collection-time import error: `test_baseball_matcher.py` imports `_kalshi_game_dt` by name at module level, which no longer exists after the rename, causing pytest to silently skip the entire file. The "132 tests pass" claim was therefore incorrect — those tests were not running at all.
 
 ## Resolver's Notes
 
-Fee rate change (Issue 2) **declined** — user explicitly specified these formulas in requirements. Nit on log rounding (Issue 7) **declined** — consistent with existing codebase behavior.
+All critical and major issues fixed. The `_kalshi_game_dt` retention in `ws_manager.py` was flagged as a simplification opportunity but DECLINED — the date-only vs. time-aware distinction is load-bearing and the comment now makes the intent clear to future readers.
+
+**Final test count: 330 passed (was 132 collected, 198 silently skipped).**
