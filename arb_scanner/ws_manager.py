@@ -1666,7 +1666,7 @@ async def main_ws(api_key_id: str, private_key) -> None:
         print(f"[WARN] Initial prop REST seed failed: {exc}. WS will populate cache.", file=sys.stderr)
 
     print(
-        f"ws_manager running — Kalshi WS + Poly REST ({POLY_POLL_SECONDS}s). "
+        f"ws_manager running — Kalshi WS + Poly WS. "
         f"Logging to {LOG_FILE}. Ctrl+C to stop."
     )
 
