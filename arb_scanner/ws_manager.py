@@ -125,6 +125,59 @@ def log_event(obj: dict) -> None:
         f.write(json.dumps(obj) + "\n")
 
 
+def evaluate_cross_market_arb(
+    poly_price: float,
+    poly_size: int,
+    kalshi_price: float,
+    kalshi_size: int,
+) -> dict:
+    # Kalshi base fee: 0.07 * size * price * (1 - price)
+    # Polymarket sports fee: 0.03 * size * price * (1 - price)
+    bottleneck_size = min(poly_size, kalshi_size)
+
+    kalshi_fee    = 0.07 * bottleneck_size * kalshi_price * (1 - kalshi_price)
+    poly_fee      = 0.03 * bottleneck_size * poly_price   * (1 - poly_price)
+    total_capital = bottleneck_size * (poly_price + kalshi_price)
+    total_fees    = kalshi_fee + poly_fee
+    payout        = bottleneck_size * 1.00
+    net_ev        = payout - total_capital - total_fees
+    roi           = (net_ev / (total_capital + total_fees)) * 100 if (total_capital + total_fees) > 0 else 0.0
+    execute       = net_ev > 0.0
+
+    result = {
+        "bottleneck_size":        bottleneck_size,
+        "total_capital_required": round(total_capital, 6),
+        "total_fees_paid":        round(total_fees, 6),
+        "net_ev_dollars":         round(net_ev, 6),
+        "roi_percentage":         round(roi, 4),
+        "execute":                execute,
+    }
+
+    log_event({
+        "event":        "cross_market_arb_eval",
+        "timestamp":    utc_now(),
+        "poly_price":   poly_price,
+        "poly_size":    poly_size,
+        "kalshi_price": kalshi_price,
+        "kalshi_size":  kalshi_size,
+        **result,
+    })
+
+    ts = utc_now()
+    if execute:
+        print(
+            f"[{ts}][ARB-EVAL] size={bottleneck_size} capital=${total_capital:.2f} "
+            f"fees=${total_fees:.2f} ev=+${net_ev:.2f} roi={roi:.1f}% EXECUTE=TRUE"
+        )
+    else:
+        print(
+            f"[{ts}][ARB-EVAL] ev=${net_ev:.2f} — spread is a trap. EXECUTE=FALSE",
+            file=sys.stderr,
+        )
+
+    return result
+
+
 def normalize_name(s: str) -> str:
     s = unicodedata.normalize("NFD", s)
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
