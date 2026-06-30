@@ -585,11 +585,9 @@ class KalshiPriceCache:
         self._cache_date = today
 
     def as_props_list(self, now: datetime) -> list[dict]:
-        stale_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
         return [
             e for e in self._cache.values()
-            if e["updated_at"] >= stale_cutoff
-            and not (e["yes_ask"] is None and e["no_ask"] is None)
+            if not (e["yes_ask"] is None and e["no_ask"] is None)
         ]
 
     def today_tickers(self, today: "datetime.date") -> list[str]:
