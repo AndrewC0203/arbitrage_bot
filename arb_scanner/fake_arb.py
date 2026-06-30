@@ -77,9 +77,6 @@ SPORTS_CONFIGS = [
     }
 ]
 
-GLOBAL_MATCHERS = [cfg["matcher_cls"](arb_threshold=ARB_THRESHOLD) for cfg in SPORTS_CONFIGS]
-
-
 # ─── Config ────────────────────────────────────────────────────────────────────
 
 KALSHI_WS_URL         = "wss://api.elections.kalshi.com/trade-api/ws/v2"
@@ -113,6 +110,8 @@ _MONEYLINE_REJECT_KEYWORDS = [
     "prop", "player", "pitcher", "batter", "era", "save",
     "shutout", "tied after", "winning after",
 ]
+
+GLOBAL_MATCHERS = [cfg["matcher_cls"](arb_threshold=ARB_THRESHOLD) for cfg in SPORTS_CONFIGS]
 
 # ─── Helpers (inlined from scanner.py) ────────────────────────────────────────
 
