@@ -111,8 +111,6 @@ _MONEYLINE_REJECT_KEYWORDS = [
     "shutout", "tied after", "winning after",
 ]
 
-GLOBAL_MATCHERS = [cfg["matcher_cls"](arb_threshold=ARB_THRESHOLD) for cfg in SPORTS_CONFIGS]
-
 # ─── Helpers (inlined from scanner.py) ────────────────────────────────────────
 
 def utc_now() -> str:
@@ -1088,9 +1086,8 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
     if not kalshi_markets:
         return
 
-    matches = []
-    for matcher in GLOBAL_MATCHERS:
-        matches.extend(matcher.match(kalshi_markets, poly_markets))
+    # FAKE ARB: use fee-free match_markets() so threshold is raw price sum only
+    matches = match_markets(kalshi_markets, poly_markets)
 
     try:
         skew = abs((datetime.fromisoformat(kalshi_updated_at) -
