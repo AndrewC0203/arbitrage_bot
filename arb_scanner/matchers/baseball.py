@@ -58,6 +58,12 @@ _ALIASES: list[tuple[str, str]] = [
 ]
 
 _ALIASES_SORTED = sorted(_ALIASES, key=lambda x: -len(x[0]))
+_ALIAS_LOOKUP = {alias: code for alias, code in _ALIASES_SORTED}
+
+# Single compiled regex: longest aliases first guarantees "chicago cubs" wins over "chicago c".
+_ALIAS_RE = re.compile(
+    "(" + "|".join(re.escape(a) for a, _ in _ALIASES_SORTED) + ")"
+)
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,11 +77,8 @@ def normalize_name(s: str) -> str:
 
 
 def team_code(text: str) -> Optional[str]:
-    t = normalize_name(text)
-    for alias, code in _ALIASES_SORTED:
-        if alias in t:
-            return code
-    return None
+    m = _ALIAS_RE.search(normalize_name(text))
+    return _ALIAS_LOOKUP[m.group(1)] if m else None
 
 
 def teams_from_kalshi_title(title: str) -> Optional[tuple[str, str]]:
@@ -208,42 +211,6 @@ class BaseballMatcher(BaseMatcher):
         kalshi_markets: list[dict],
         polymarket_markets: list[dict]
     ) -> list[dict]:
-        is_test_mode = any("team_abbr" not in pm for pm in polymarket_markets)
-
-        if is_test_mode:
-            matches = []
-            for km in kalshi_markets:
-                teams_k = teams_from_kalshi_market(km.get("raw") or {}) or teams_from_kalshi_market(km)
-                if not teams_k:
-                    continue
-                for pm in polymarket_markets:
-                    teams_p = teams_from_polymarket(pm)
-                    if not teams_p:
-                        continue
-                    if set(teams_k) == set(teams_p):
-                        k_ask = km["ask"]
-                        p_ask = pm["ask"]
-                        k_fee = km["taker_fee"]
-                        p_fee = pm["taker_fee"]
-                        total_cost = k_ask + p_ask + k_fee + p_fee
-                        gap_cents = round((self.arb_threshold - total_cost) * 100, 4)
-                        matches.append({
-                            "market_name": km["title"],
-                            "kalshi_ticker": km["ticker"],
-                            "kalshi_team": teams_k[0],
-                            "kalshi_ask": round(k_ask, 6),
-                            "kalshi_taker_fee": round(k_fee, 6),
-                            "polymarket_slug": pm["slug"],
-                            "polymarket_team": teams_k[1],
-                            "polymarket_ask": round(p_ask, 6),
-                            "polymarket_taker_fee": round(p_fee, 6),
-                            "total_cost": round(total_cost, 6),
-                            "gap_cents": gap_cents,
-                            "is_arb": total_cost < self.arb_threshold,
-                        })
-            return matches
-
-        # Live matching mode
         poly_by_team: dict[str, list[dict]] = {}
         for pm in polymarket_markets:
             team_abbr = pm.get("team_abbr")
