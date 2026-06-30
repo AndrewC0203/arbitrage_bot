@@ -1,8 +1,8 @@
 {
-  "kalshi_count": 191,
-  "polymarket_count": 283,
-  "match_count": 178,
-  "arb_count": 2,
+  "kalshi_count": 190,
+  "polymarket_count": 282,
+  "match_count": 148,
+  "arb_count": 0,
   "matches": [
     {
       "market_name": "Will Stefanos Tsitsipas win the Tsitsipas vs Djokovic: Round Of 64 match?",
@@ -28,34 +28,6 @@
       "polymarket_team": "stefanos tsitsipas",
       "polymarket_ask": 0.15,
       "polymarket_taker_fee": 0.0015,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Daniel Merida win the Merida vs Medvedev: Round Of 64 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUL01MERMED-MER",
-      "kalshi_team": "daniel merida",
-      "kalshi_ask": 0.06,
-      "kalshi_taker_fee": 0.0006,
-      "polymarket_slug": "aec-atp-danagu-danmed-2026-06-30",
-      "polymarket_team": "daniil medvedev",
-      "polymarket_ask": 0.955,
-      "polymarket_taker_fee": 0.00955,
-      "total_cost": 1.02515,
-      "gap_cents": -6.515,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Daniil Medvedev win the Merida vs Medvedev: Round Of 64 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUL01MERMED-MED",
-      "kalshi_team": "daniil medvedev",
-      "kalshi_ask": 0.96,
-      "kalshi_taker_fee": 0.0096,
-      "polymarket_slug": "aec-atp-danagu-danmed-2026-06-30",
-      "polymarket_team": "daniel merida aguilar",
-      "polymarket_ask": 0.05,
-      "polymarket_taker_fee": 0.0005,
       "total_cost": 1.0201,
       "gap_cents": -6.01,
       "is_arb": false
@@ -229,155 +201,15 @@
       "is_arb": false
     },
     {
-      "market_name": "Will Rafael Jodar win the Jodar vs Carreno Busta: Round Of 64 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUL01JODCAR-JOD",
-      "kalshi_team": "rafael jodar",
-      "kalshi_ask": 0.76,
-      "kalshi_taker_fee": 0.0076,
-      "polymarket_slug": "aec-atp-rafjod-pabbus-2026-06-30",
-      "polymarket_team": "pablo carreno busta",
-      "polymarket_ask": 0.25,
-      "polymarket_taker_fee": 0.0025,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Pablo Carreno Busta win the Jodar vs Carreno Busta: Round Of 64 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUL01JODCAR-CAR",
-      "kalshi_team": "pablo carreno busta",
-      "kalshi_ask": 0.26,
-      "kalshi_taker_fee": 0.0026,
-      "polymarket_slug": "aec-atp-rafjod-pabbus-2026-06-30",
-      "polymarket_team": "rafael jodar",
-      "polymarket_ask": 0.76,
-      "polymarket_taker_fee": 0.0076,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Zachary Svajda win the Llamas Ruiz vs Svajda: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN30LLASVA-SVA",
-      "kalshi_team": "zachary svajda",
-      "kalshi_ask": 0.72,
-      "kalshi_taker_fee": 0.0072,
-      "polymarket_slug": "aec-atp-pabrui-zacsva-2026-06-29",
-      "polymarket_team": "pablo llamas ruiz",
-      "polymarket_ask": 0.3,
-      "polymarket_taker_fee": 0.003,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Pablo Llamas Ruiz win the Llamas Ruiz vs Svajda: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN30LLASVA-LLA",
-      "kalshi_team": "pablo llamas ruiz",
-      "kalshi_ask": 0.29,
-      "kalshi_taker_fee": 0.0029,
-      "polymarket_slug": "aec-atp-pabrui-zacsva-2026-06-29",
-      "polymarket_team": "zachary svajda",
-      "polymarket_ask": 0.71,
-      "polymarket_taker_fee": 0.0071,
-      "total_cost": 1.01,
-      "gap_cents": -5.0,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Jack Pinnington Jones win the Nakashima vs Pinnington Jones: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29NAKPIN-PIN",
-      "kalshi_team": "jack pinnington jones",
-      "kalshi_ask": 0.04,
-      "kalshi_taker_fee": 0.0004,
-      "polymarket_slug": "aec-atp-branak-jacjon-2026-06-29",
-      "polymarket_team": "brandon nakashima",
-      "polymarket_ask": 0.97,
-      "polymarket_taker_fee": 0.0097,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Brandon Nakashima win the Nakashima vs Pinnington Jones: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29NAKPIN-NAK",
-      "kalshi_team": "brandon nakashima",
-      "kalshi_ask": 0.97,
-      "kalshi_taker_fee": 0.0097,
-      "polymarket_slug": "aec-atp-branak-jacjon-2026-06-29",
-      "polymarket_team": "jack pinnington jones",
-      "polymarket_ask": 0.04,
-      "polymarket_taker_fee": 0.0004,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Rinky Hijikata win the De Jong vs Hijikata: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29DEJHIJ-HIJ",
-      "kalshi_team": "rinky hijikata",
-      "kalshi_ask": 0.84,
-      "kalshi_taker_fee": 0.0084,
-      "polymarket_slug": "aec-atp-jesjon-rinhij-2026-06-29",
-      "polymarket_team": "jesper de jong",
-      "polymarket_ask": 0.17,
-      "polymarket_taker_fee": 0.0017,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Jesper De Jong win the De Jong vs Hijikata: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29DEJHIJ-DEJ",
-      "kalshi_team": "jesper de jong",
-      "kalshi_ask": 0.17,
-      "kalshi_taker_fee": 0.0017,
-      "polymarket_slug": "aec-atp-jesjon-rinhij-2026-06-29",
-      "polymarket_team": "rinky hijikata",
-      "polymarket_ask": 0.84,
-      "polymarket_taker_fee": 0.0084,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Alex de Minaur win the de Minaur vs Burruchaga: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29DEBUR-DE",
-      "kalshi_team": "alex de minaur",
-      "kalshi_ask": 0.95,
-      "kalshi_taker_fee": 0.0095,
-      "polymarket_slug": "aec-atp-alemin-rombur-2026-06-29",
-      "polymarket_team": "roman andres burruchaga",
-      "polymarket_ask": 0.06,
-      "polymarket_taker_fee": 0.0006,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Roman Andres Burruchaga win the de Minaur vs Burruchaga: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29DEBUR-BUR",
-      "kalshi_team": "roman andres burruchaga",
-      "kalshi_ask": 0.06,
-      "kalshi_taker_fee": 0.0006,
-      "polymarket_slug": "aec-atp-alemin-rombur-2026-06-29",
-      "polymarket_team": "alex de minaur",
-      "polymarket_ask": 0.95,
-      "polymarket_taker_fee": 0.0095,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
       "market_name": "Will Adrian Mannarino win the Mannarino vs Droguet: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29MANDRO-MAN",
       "kalshi_team": "adrian mannarino",
-      "kalshi_ask": 0.93,
-      "kalshi_taker_fee": 0.0093,
+      "kalshi_ask": 0.94,
+      "kalshi_taker_fee": 0.0094,
       "polymarket_slug": "aec-atp-adrman-titdro-2026-06-29",
       "polymarket_team": "titouan droguet",
-      "polymarket_ask": 0.08,
-      "polymarket_taker_fee": 0.0008,
+      "polymarket_ask": 0.07,
+      "polymarket_taker_fee": 0.0007,
       "total_cost": 1.0201,
       "gap_cents": -6.01,
       "is_arb": false
@@ -386,14 +218,14 @@
       "market_name": "Will Titouan Droguet win the Mannarino vs Droguet: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29MANDRO-DRO",
       "kalshi_team": "titouan droguet",
-      "kalshi_ask": 0.09,
-      "kalshi_taker_fee": 0.0009,
+      "kalshi_ask": 0.07,
+      "kalshi_taker_fee": 0.0007,
       "polymarket_slug": "aec-atp-adrman-titdro-2026-06-29",
       "polymarket_team": "adrian mannarino",
-      "polymarket_ask": 0.93,
-      "polymarket_taker_fee": 0.0093,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
+      "polymarket_ask": 0.94,
+      "polymarket_taker_fee": 0.0094,
+      "total_cost": 1.0201,
+      "gap_cents": -6.01,
       "is_arb": false
     },
     {
@@ -404,24 +236,24 @@
       "kalshi_taker_fee": 0.0016,
       "polymarket_slug": "aec-atp-kammaj-aletab-2026-06-29",
       "polymarket_team": "kamil majchrzak",
-      "polymarket_ask": 0.86,
-      "polymarket_taker_fee": 0.0086,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
+      "polymarket_ask": 0.85,
+      "polymarket_taker_fee": 0.0085,
+      "total_cost": 1.0201,
+      "gap_cents": -6.01,
       "is_arb": false
     },
     {
       "market_name": "Will Kamil Majchrzak win the Majchrzak vs Tabilo: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29MAJTAB-MAJ",
       "kalshi_team": "kamil majchrzak",
-      "kalshi_ask": 0.86,
-      "kalshi_taker_fee": 0.0086,
+      "kalshi_ask": 0.85,
+      "kalshi_taker_fee": 0.0085,
       "polymarket_slug": "aec-atp-kammaj-aletab-2026-06-29",
       "polymarket_team": "alejandro tabilo",
       "polymarket_ask": 0.16,
       "polymarket_taker_fee": 0.0016,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
+      "total_cost": 1.0201,
+      "gap_cents": -6.01,
       "is_arb": false
     },
     {
@@ -453,34 +285,6 @@
       "is_arb": false
     },
     {
-      "market_name": "Will Giovanni Mpetshi Perricard win the Hanfmann vs Mpetshi Perricard: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29HANMPE-MPE",
-      "kalshi_team": "giovanni mpetshi perricard",
-      "kalshi_ask": 0.74,
-      "kalshi_taker_fee": 0.0074,
-      "polymarket_slug": "aec-atp-yanhan-gioper-2026-06-29",
-      "polymarket_team": "yannick hanfmann",
-      "polymarket_ask": 0.27,
-      "polymarket_taker_fee": 0.0027,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Yannick Hanfmann win the Hanfmann vs Mpetshi Perricard: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29HANMPE-HAN",
-      "kalshi_team": "yannick hanfmann",
-      "kalshi_ask": 0.28,
-      "kalshi_taker_fee": 0.0028,
-      "polymarket_slug": "aec-atp-yanhan-gioper-2026-06-29",
-      "polymarket_team": "giovanni mpetshi perricard",
-      "polymarket_ask": 0.74,
-      "polymarket_taker_fee": 0.0074,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
-      "is_arb": false
-    },
-    {
       "market_name": "Will Tallon Griekspoor win the Griekspoor vs Duckworth: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29GRIDUC-GRI",
       "kalshi_team": "tallon griekspoor",
@@ -488,10 +292,10 @@
       "kalshi_taker_fee": 0.0068,
       "polymarket_slug": "aec-atp-talgri-jamduc-2026-06-29",
       "polymarket_team": "james duckworth",
-      "polymarket_ask": 0.32,
-      "polymarket_taker_fee": 0.0032,
-      "total_cost": 1.01,
-      "gap_cents": -5.0,
+      "polymarket_ask": 0.33,
+      "polymarket_taker_fee": 0.0033,
+      "total_cost": 1.0201,
+      "gap_cents": -6.01,
       "is_arb": false
     },
     {
@@ -502,10 +306,10 @@
       "kalshi_taker_fee": 0.0033,
       "polymarket_slug": "aec-atp-talgri-jamduc-2026-06-29",
       "polymarket_team": "tallon griekspoor",
-      "polymarket_ask": 0.69,
-      "polymarket_taker_fee": 0.0069,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
+      "polymarket_ask": 0.68,
+      "polymarket_taker_fee": 0.0068,
+      "total_cost": 1.0201,
+      "gap_cents": -6.01,
       "is_arb": false
     },
     {
@@ -565,45 +369,17 @@
       "is_arb": false
     },
     {
-      "market_name": "Will Jakub Mensik win the Mensik vs Samuel: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29MENSAM-MEN",
-      "kalshi_team": "jakub mensik",
-      "kalshi_ask": 0.69,
-      "kalshi_taker_fee": 0.0069,
-      "polymarket_slug": "aec-atp-segzap-samlin-2026-06-30",
-      "polymarket_team": "samuel linde",
-      "polymarket_ask": 0.48,
-      "polymarket_taker_fee": 0.0048,
-      "total_cost": 1.1817,
-      "gap_cents": -22.17,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Jakub Mensik win the Mensik vs Samuel: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29MENSAM-MEN",
-      "kalshi_team": "jakub mensik",
-      "kalshi_ask": 0.69,
-      "kalshi_taker_fee": 0.0069,
-      "polymarket_slug": "aec-atp-gusalm-samher-2026-06-30",
-      "polymarket_team": "samuel heredia",
-      "polymarket_ask": 0.28,
-      "polymarket_taker_fee": 0.0028,
-      "total_cost": 0.9797,
-      "gap_cents": -1.97,
-      "is_arb": false
-    },
-    {
       "market_name": "Will Dane Sweeny win the Sweeny vs Dimitrov: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29SWEDIM-SWE",
       "kalshi_team": "dane sweeny",
-      "kalshi_ask": 0.23,
-      "kalshi_taker_fee": 0.0023,
+      "kalshi_ask": 0.24,
+      "kalshi_taker_fee": 0.0024,
       "polymarket_slug": "aec-atp-danswe-gridim-2026-06-29",
       "polymarket_team": "grigor dimitrov",
       "polymarket_ask": 0.78,
       "polymarket_taker_fee": 0.0078,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "total_cost": 1.0302,
+      "gap_cents": -7.02,
       "is_arb": false
     },
     {
@@ -652,14 +428,14 @@
       "market_name": "Will Arthur Fils win the Collignon vs Fils: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29COLFIL-FIL",
       "kalshi_team": "arthur fils",
-      "kalshi_ask": 0.58,
-      "kalshi_taker_fee": 0.0058,
+      "kalshi_ask": 0.59,
+      "kalshi_taker_fee": 0.0059,
       "polymarket_slug": "aec-atp-rapcol-artfil-2026-06-29",
       "polymarket_team": "raphael collignon",
       "polymarket_ask": 0.43,
       "polymarket_taker_fee": 0.0043,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "total_cost": 1.0302,
+      "gap_cents": -7.02,
       "is_arb": false
     },
     {
@@ -708,12 +484,12 @@
       "market_name": "Will Sho Shimabukuro win the Shimabukuro vs Faria: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29SHIFAR-SHI",
       "kalshi_team": "sho shimabukuro",
-      "kalshi_ask": 0.16,
-      "kalshi_taker_fee": 0.0016,
+      "kalshi_ask": 0.14,
+      "kalshi_taker_fee": 0.0014,
       "polymarket_slug": "aec-atp-shoshi-jaifar-2026-06-29",
       "polymarket_team": "jaime faria",
-      "polymarket_ask": 0.85,
-      "polymarket_taker_fee": 0.0085,
+      "polymarket_ask": 0.87,
+      "polymarket_taker_fee": 0.0087,
       "total_cost": 1.0201,
       "gap_cents": -6.01,
       "is_arb": false
@@ -722,12 +498,12 @@
       "market_name": "Will Jaime Faria win the Shimabukuro vs Faria: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29SHIFAR-FAR",
       "kalshi_team": "jaime faria",
-      "kalshi_ask": 0.85,
-      "kalshi_taker_fee": 0.0085,
+      "kalshi_ask": 0.87,
+      "kalshi_taker_fee": 0.0087,
       "polymarket_slug": "aec-atp-shoshi-jaifar-2026-06-29",
       "polymarket_team": "sho shimabukuro",
-      "polymarket_ask": 0.16,
-      "polymarket_taker_fee": 0.0016,
+      "polymarket_ask": 0.14,
+      "polymarket_taker_fee": 0.0014,
       "total_cost": 1.0201,
       "gap_cents": -6.01,
       "is_arb": false
@@ -740,10 +516,10 @@
       "kalshi_taker_fee": 0.0079,
       "polymarket_slug": "aec-atp-damdzu-artfer-2026-06-29",
       "polymarket_team": "damir dzumhur",
-      "polymarket_ask": 0.22,
-      "polymarket_taker_fee": 0.0022,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "polymarket_ask": 0.21,
+      "polymarket_taker_fee": 0.0021,
+      "total_cost": 1.01,
+      "gap_cents": -5.0,
       "is_arb": false
     },
     {
@@ -754,10 +530,10 @@
       "kalshi_taker_fee": 0.0022,
       "polymarket_slug": "aec-atp-damdzu-artfer-2026-06-29",
       "polymarket_team": "arthur fery",
-      "polymarket_ask": 0.79,
-      "polymarket_taker_fee": 0.0079,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "polymarket_ask": 0.8,
+      "polymarket_taker_fee": 0.008,
+      "total_cost": 1.0302,
+      "gap_cents": -7.02,
       "is_arb": false
     },
     {
@@ -778,14 +554,14 @@
       "market_name": "Will Ben Shelton win the Virtanen vs Shelton: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29VIRSHE-SHE",
       "kalshi_team": "ben shelton",
-      "kalshi_ask": 0.81,
-      "kalshi_taker_fee": 0.0081,
+      "kalshi_ask": 0.82,
+      "kalshi_taker_fee": 0.0082,
       "polymarket_slug": "aec-atp-ottvir-benshe-2026-06-29",
       "polymarket_team": "otto virtanen",
       "polymarket_ask": 0.2,
       "polymarket_taker_fee": 0.002,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "total_cost": 1.0302,
+      "gap_cents": -7.02,
       "is_arb": false
     },
     {
@@ -801,20 +577,6 @@
       "total_cost": 1.0302,
       "gap_cents": -7.02,
       "is_arb": false
-    },
-    {
-      "market_name": "Will Patrick Kypson win the Kypson vs McDonald: Round Of 128 match?",
-      "kalshi_ticker": "KXATPMATCH-26JUN29KYPMCD-KYP",
-      "kalshi_team": "patrick kypson",
-      "kalshi_ask": 0.29,
-      "kalshi_taker_fee": 0.0029,
-      "polymarket_slug": "aec-atp-niemcd-juamar-2026-06-29",
-      "polymarket_team": "niels mcdonald",
-      "polymarket_ask": 0.18,
-      "polymarket_taker_fee": 0.0018,
-      "total_cost": 0.4747,
-      "gap_cents": 48.53,
-      "is_arb": true
     },
     {
       "market_name": "Will Patrick Kypson win the Kypson vs McDonald: Round Of 128 match?",
@@ -1128,14 +890,14 @@
       "market_name": "Will Matteo Arnaldi win the Arnaldi vs Halys: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29ARNHAL-ARN",
       "kalshi_team": "matteo arnaldi",
-      "kalshi_ask": 0.44,
-      "kalshi_taker_fee": 0.0044,
+      "kalshi_ask": 0.43,
+      "kalshi_taker_fee": 0.0043,
       "polymarket_slug": "aec-atp-matarn-quehal-2026-06-29",
       "polymarket_team": "quentin halys",
       "polymarket_ask": 0.57,
       "polymarket_taker_fee": 0.0057,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "total_cost": 1.01,
+      "gap_cents": -5.0,
       "is_arb": false
     },
     {
@@ -1170,28 +932,28 @@
       "market_name": "Will Harry Wendelken win the Royer vs Wendelken: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29ROYWEN-WEN",
       "kalshi_team": "harry wendelken",
-      "kalshi_ask": 0.65,
-      "kalshi_taker_fee": 0.0065,
+      "kalshi_ask": 0.61,
+      "kalshi_taker_fee": 0.0061,
       "polymarket_slug": "aec-atp-valroy-harwen-2026-06-29",
       "polymarket_team": "valentin royer",
-      "polymarket_ask": 0.37,
-      "polymarket_taker_fee": 0.0037,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
+      "polymarket_ask": 0.38,
+      "polymarket_taker_fee": 0.0038,
+      "total_cost": 0.9999,
+      "gap_cents": -3.99,
       "is_arb": false
     },
     {
       "market_name": "Will Valentin Royer win the Royer vs Wendelken: Round Of 128 match?",
       "kalshi_ticker": "KXATPMATCH-26JUN29ROYWEN-ROY",
       "kalshi_team": "valentin royer",
-      "kalshi_ask": 0.35,
-      "kalshi_taker_fee": 0.0035,
+      "kalshi_ask": 0.41,
+      "kalshi_taker_fee": 0.0041,
       "polymarket_slug": "aec-atp-valroy-harwen-2026-06-29",
       "polymarket_team": "harry wendelken",
-      "polymarket_ask": 0.66,
-      "polymarket_taker_fee": 0.0066,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "polymarket_ask": 0.63,
+      "polymarket_taker_fee": 0.0063,
+      "total_cost": 1.0504,
+      "gap_cents": -9.04,
       "is_arb": false
     },
     {
@@ -1279,34 +1041,6 @@
       "is_arb": false
     },
     {
-      "market_name": "Will Dayana Yastremska win the Yastremska vs Bouzas Maneiro: Round Of 64 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUL01YASBOU-YAS",
-      "kalshi_team": "dayana yastremska",
-      "kalshi_ask": 0.49,
-      "kalshi_taker_fee": 0.0049,
-      "polymarket_slug": "aec-wta-dayyas-jesman-2026-07-01",
-      "polymarket_team": "jessica bouzas maneiro",
-      "polymarket_ask": 0.52,
-      "polymarket_taker_fee": 0.0052,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Jessica Bouzas Maneiro win the Yastremska vs Bouzas Maneiro: Round Of 64 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUL01YASBOU-BOU",
-      "kalshi_team": "jessica bouzas maneiro",
-      "kalshi_ask": 0.53,
-      "kalshi_taker_fee": 0.0053,
-      "polymarket_slug": "aec-wta-dayyas-jesman-2026-07-01",
-      "polymarket_team": "dayana yastremska",
-      "polymarket_ask": 0.485,
-      "polymarket_taker_fee": 0.00485,
-      "total_cost": 1.02515,
-      "gap_cents": -6.515,
-      "is_arb": false
-    },
-    {
       "market_name": "Will Naomi Osaka win the Gasanova vs Osaka: Round Of 64 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUL01GASOSA-OSA",
       "kalshi_team": "naomi osaka",
@@ -1370,24 +1104,24 @@
       "kalshi_taker_fee": 0.0019,
       "polymarket_slug": "aec-wta-ekaale-lantar-2026-06-30",
       "polymarket_team": "ekaterina alexandrova",
-      "polymarket_ask": 0.82,
-      "polymarket_taker_fee": 0.0082,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "polymarket_ask": 0.825,
+      "polymarket_taker_fee": 0.00825,
+      "total_cost": 1.02515,
+      "gap_cents": -6.515,
       "is_arb": false
     },
     {
       "market_name": "Will Ekaterina Alexandrova win the Alexandrova vs Tararudee: Round Of 64 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUL01ALETAR-ALE",
       "kalshi_team": "ekaterina alexandrova",
-      "kalshi_ask": 0.83,
-      "kalshi_taker_fee": 0.0083,
+      "kalshi_ask": 0.82,
+      "kalshi_taker_fee": 0.0082,
       "polymarket_slug": "aec-wta-ekaale-lantar-2026-06-30",
       "polymarket_team": "lanlana tararudee",
       "polymarket_ask": 0.19,
       "polymarket_taker_fee": 0.0019,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
+      "total_cost": 1.0201,
+      "gap_cents": -6.01,
       "is_arb": false
     },
     {
@@ -1578,34 +1312,6 @@
       "kalshi_team": "iva jovic",
       "kalshi_ask": 0.74,
       "kalshi_taker_fee": 0.0074,
-      "polymarket_slug": "aec-wta-marsak-clatau-2026-06-29",
-      "polymarket_team": "maria sakkari",
-      "polymarket_ask": 0.87,
-      "polymarket_taker_fee": 0.0087,
-      "total_cost": 1.6261,
-      "gap_cents": -66.61,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Iva Jovic win the Maria vs Jovic: Round Of 64 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUL01MARJOV-JOV",
-      "kalshi_team": "iva jovic",
-      "kalshi_ask": 0.74,
-      "kalshi_taker_fee": 0.0074,
-      "polymarket_slug": "aec-wta-beamai-martim-2026-06-29",
-      "polymarket_team": "maria timofeeva",
-      "polymarket_ask": 0.7,
-      "polymarket_taker_fee": 0.007,
-      "total_cost": 1.4544,
-      "gap_cents": -49.44,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Iva Jovic win the Maria vs Jovic: Round Of 64 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUL01MARJOV-JOV",
-      "kalshi_team": "iva jovic",
-      "kalshi_ask": 0.74,
-      "kalshi_taker_fee": 0.0074,
       "polymarket_slug": "aec-wta-tatmar-ivajov-2026-06-30",
       "polymarket_team": "tatjana maria",
       "polymarket_ask": 0.28,
@@ -1638,34 +1344,6 @@
       "polymarket_team": "xinyu wang",
       "polymarket_ask": 0.27,
       "polymarket_taker_fee": 0.0027,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Sara Sorribes Tormo win the Pegula vs Sorribes Tormo: Round Of 64 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUL01PEGSOR-SOR",
-      "kalshi_team": "sara sorribes tormo",
-      "kalshi_ask": 0.09,
-      "kalshi_taker_fee": 0.0009,
-      "polymarket_slug": "aec-wta-jespeg-sartor-2026-06-30",
-      "polymarket_team": "jessica pegula",
-      "polymarket_ask": 0.93,
-      "polymarket_taker_fee": 0.0093,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Jessica Pegula win the Pegula vs Sorribes Tormo: Round Of 64 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUL01PEGSOR-PEG",
-      "kalshi_team": "jessica pegula",
-      "kalshi_ask": 0.93,
-      "kalshi_taker_fee": 0.0093,
-      "polymarket_slug": "aec-wta-jespeg-sartor-2026-06-30",
-      "polymarket_team": "sara sorribes tormo",
-      "polymarket_ask": 0.08,
-      "polymarket_taker_fee": 0.0008,
       "total_cost": 1.0201,
       "gap_cents": -6.01,
       "is_arb": false
@@ -1856,14 +1534,14 @@
       "market_name": "Will Anna Blinkova win the Starodubtseva vs Blinkova: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29STABLI-BLI",
       "kalshi_team": "anna blinkova",
-      "kalshi_ask": 0.45,
-      "kalshi_taker_fee": 0.0045,
+      "kalshi_ask": 0.44,
+      "kalshi_taker_fee": 0.0044,
       "polymarket_slug": "aec-wta-yulsta-annbli-2026-06-29",
       "polymarket_team": "yulia starodubtseva",
       "polymarket_ask": 0.57,
       "polymarket_taker_fee": 0.0057,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
+      "total_cost": 1.0201,
+      "gap_cents": -6.01,
       "is_arb": false
     },
     {
@@ -1898,12 +1576,12 @@
       "market_name": "Will Jasmine Paolini win the Paolini vs Montgomery: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29PAOMON-PAO",
       "kalshi_team": "jasmine paolini",
-      "kalshi_ask": 0.33,
-      "kalshi_taker_fee": 0.0033,
+      "kalshi_ask": 0.2,
+      "kalshi_taker_fee": 0.002,
       "polymarket_slug": "aec-wta-jaspao-robmon-2026-06-29",
       "polymarket_team": "robin montgomery",
-      "polymarket_ask": 0.69,
-      "polymarket_taker_fee": 0.0069,
+      "polymarket_ask": 0.82,
+      "polymarket_taker_fee": 0.0082,
       "total_cost": 1.0302,
       "gap_cents": -7.02,
       "is_arb": false
@@ -1912,12 +1590,12 @@
       "market_name": "Will Robin Montgomery win the Paolini vs Montgomery: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29PAOMON-MON",
       "kalshi_team": "robin montgomery",
-      "kalshi_ask": 0.7,
-      "kalshi_taker_fee": 0.007,
+      "kalshi_ask": 0.83,
+      "kalshi_taker_fee": 0.0083,
       "polymarket_slug": "aec-wta-jaspao-robmon-2026-06-29",
       "polymarket_team": "jasmine paolini",
-      "polymarket_ask": 0.32,
-      "polymarket_taker_fee": 0.0032,
+      "polymarket_ask": 0.19,
+      "polymarket_taker_fee": 0.0019,
       "total_cost": 1.0302,
       "gap_cents": -7.02,
       "is_arb": false
@@ -1954,56 +1632,56 @@
       "market_name": "Will Kamilla Rakhimova win the Kalinina vs Rakhimova: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29KALRAK-RAK",
       "kalshi_team": "kamilla rakhimova",
-      "kalshi_ask": 0.14,
-      "kalshi_taker_fee": 0.0014,
+      "kalshi_ask": 0.34,
+      "kalshi_taker_fee": 0.0034,
       "polymarket_slug": "aec-wta-anhkal-kamrak-2026-06-29",
       "polymarket_team": "anhelina kalinina",
-      "polymarket_ask": 0.83,
-      "polymarket_taker_fee": 0.0083,
-      "total_cost": 0.9797,
-      "gap_cents": -1.97,
+      "polymarket_ask": 0.66,
+      "polymarket_taker_fee": 0.0066,
+      "total_cost": 1.01,
+      "gap_cents": -5.0,
       "is_arb": false
     },
     {
       "market_name": "Will Anhelina Kalinina win the Kalinina vs Rakhimova: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29KALRAK-KAL",
       "kalshi_team": "anhelina kalinina",
-      "kalshi_ask": 0.87,
-      "kalshi_taker_fee": 0.0087,
+      "kalshi_ask": 0.69,
+      "kalshi_taker_fee": 0.0069,
       "polymarket_slug": "aec-wta-anhkal-kamrak-2026-06-29",
       "polymarket_team": "kamilla rakhimova",
-      "polymarket_ask": 0.18,
-      "polymarket_taker_fee": 0.0018,
-      "total_cost": 1.0605,
-      "gap_cents": -10.05,
+      "polymarket_ask": 0.35,
+      "polymarket_taker_fee": 0.0035,
+      "total_cost": 1.0504,
+      "gap_cents": -9.04,
       "is_arb": false
     },
     {
       "market_name": "Will Clara Tauson win the Sakkari vs Tauson: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29SAKTAU-TAU",
       "kalshi_team": "clara tauson",
-      "kalshi_ask": 0.14,
-      "kalshi_taker_fee": 0.0014,
+      "kalshi_ask": 0.08,
+      "kalshi_taker_fee": 0.0008,
       "polymarket_slug": "aec-wta-marsak-clatau-2026-06-29",
       "polymarket_team": "maria sakkari",
-      "polymarket_ask": 0.87,
-      "polymarket_taker_fee": 0.0087,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
+      "polymarket_ask": 0.94,
+      "polymarket_taker_fee": 0.0094,
+      "total_cost": 1.0302,
+      "gap_cents": -7.02,
       "is_arb": false
     },
     {
       "market_name": "Will Maria Sakkari win the Sakkari vs Tauson: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29SAKTAU-SAK",
       "kalshi_team": "maria sakkari",
-      "kalshi_ask": 0.88,
-      "kalshi_taker_fee": 0.0088,
+      "kalshi_ask": 0.93,
+      "kalshi_taker_fee": 0.0093,
       "polymarket_slug": "aec-wta-marsak-clatau-2026-06-29",
       "polymarket_team": "clara tauson",
-      "polymarket_ask": 0.14,
-      "polymarket_taker_fee": 0.0014,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
+      "polymarket_ask": 0.07,
+      "polymarket_taker_fee": 0.0007,
+      "total_cost": 1.01,
+      "gap_cents": -5.0,
       "is_arb": false
     },
     {
@@ -2066,28 +1744,28 @@
       "market_name": "Will Tereza Valentova win the Valentova vs Pliskova: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29VALPLI-VAL",
       "kalshi_team": "tereza valentova",
-      "kalshi_ask": 0.23,
-      "kalshi_taker_fee": 0.0023,
+      "kalshi_ask": 0.16,
+      "kalshi_taker_fee": 0.0016,
       "polymarket_slug": "aec-wta-terval-karpli-2026-06-29",
       "polymarket_team": "karolina pliskova",
-      "polymarket_ask": 0.75,
-      "polymarket_taker_fee": 0.0075,
-      "total_cost": 0.9898,
-      "gap_cents": -2.98,
+      "polymarket_ask": 0.89,
+      "polymarket_taker_fee": 0.0089,
+      "total_cost": 1.0605,
+      "gap_cents": -10.05,
       "is_arb": false
     },
     {
       "market_name": "Will Karolina Pliskova win the Valentova vs Pliskova: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29VALPLI-PLI",
       "kalshi_team": "karolina pliskova",
-      "kalshi_ask": 0.79,
-      "kalshi_taker_fee": 0.0079,
+      "kalshi_ask": 0.84,
+      "kalshi_taker_fee": 0.0084,
       "polymarket_slug": "aec-wta-terval-karpli-2026-06-29",
       "polymarket_team": "tereza valentova",
-      "polymarket_ask": 0.26,
-      "polymarket_taker_fee": 0.0026,
-      "total_cost": 1.0605,
-      "gap_cents": -10.05,
+      "polymarket_ask": 0.12,
+      "polymarket_taker_fee": 0.0012,
+      "total_cost": 0.9696,
+      "gap_cents": -0.96,
       "is_arb": false
     },
     {
@@ -2122,12 +1800,12 @@
       "market_name": "Will Petra Marcinko win the Marcinko vs Kenin: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29MARKEN-MAR",
       "kalshi_team": "petra marcinko",
-      "kalshi_ask": 0.28,
-      "kalshi_taker_fee": 0.0028,
+      "kalshi_ask": 0.07,
+      "kalshi_taker_fee": 0.0007,
       "polymarket_slug": "aec-wta-petmar-sofken-2026-06-29",
       "polymarket_team": "sofia kenin",
-      "polymarket_ask": 0.73,
-      "polymarket_taker_fee": 0.0073,
+      "polymarket_ask": 0.94,
+      "polymarket_taker_fee": 0.0094,
       "total_cost": 1.0201,
       "gap_cents": -6.01,
       "is_arb": false
@@ -2136,24 +1814,10 @@
       "market_name": "Will Sofia Kenin win the Marcinko vs Kenin: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29MARKEN-KEN",
       "kalshi_team": "sofia kenin",
-      "kalshi_ask": 0.74,
-      "kalshi_taker_fee": 0.0074,
-      "polymarket_slug": "aec-wta-petmar-sofken-2026-06-29",
-      "polymarket_team": "petra marcinko",
-      "polymarket_ask": 0.28,
-      "polymarket_taker_fee": 0.0028,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Katie Swan win the Begu vs Swan: Round Of 128 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUN29BEGSWA-SWA",
-      "kalshi_team": "katie swan",
       "kalshi_ask": 0.94,
       "kalshi_taker_fee": 0.0094,
-      "polymarket_slug": "aec-wta-iribeg-katswa-2026-06-29",
-      "polymarket_team": "irina camelia begu",
+      "polymarket_slug": "aec-wta-petmar-sofken-2026-06-29",
+      "polymarket_team": "petra marcinko",
       "polymarket_ask": 0.07,
       "polymarket_taker_fee": 0.0007,
       "total_cost": 1.0201,
@@ -2161,15 +1825,29 @@
       "is_arb": false
     },
     {
+      "market_name": "Will Katie Swan win the Begu vs Swan: Round Of 128 match?",
+      "kalshi_ticker": "KXWTAMATCH-26JUN29BEGSWA-SWA",
+      "kalshi_team": "katie swan",
+      "kalshi_ask": 0.97,
+      "kalshi_taker_fee": 0.0097,
+      "polymarket_slug": "aec-wta-iribeg-katswa-2026-06-29",
+      "polymarket_team": "irina camelia begu",
+      "polymarket_ask": 0.03,
+      "polymarket_taker_fee": 0.0003,
+      "total_cost": 1.01,
+      "gap_cents": -5.0,
+      "is_arb": false
+    },
+    {
       "market_name": "Will Irina-Camelia Begu win the Begu vs Swan: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29BEGSWA-BEG",
       "kalshi_team": "irina camelia begu",
-      "kalshi_ask": 0.08,
-      "kalshi_taker_fee": 0.0008,
+      "kalshi_ask": 0.04,
+      "kalshi_taker_fee": 0.0004,
       "polymarket_slug": "aec-wta-iribeg-katswa-2026-06-29",
       "polymarket_team": "katie swan",
-      "polymarket_ask": 0.94,
-      "polymarket_taker_fee": 0.0094,
+      "polymarket_ask": 0.98,
+      "polymarket_taker_fee": 0.0098,
       "total_cost": 1.0302,
       "gap_cents": -7.02,
       "is_arb": false
@@ -2229,20 +1907,6 @@
       "total_cost": 1.0201,
       "gap_cents": -6.01,
       "is_arb": false
-    },
-    {
-      "market_name": "Will Simona Waltert win the Osorio vs Waltert: Round Of 128 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUN29OSOWAL-WAL",
-      "kalshi_team": "simona waltert",
-      "kalshi_ask": 0.37,
-      "kalshi_taker_fee": 0.0037,
-      "polymarket_slug": "aec-atp-juaoso-petber-2026-06-30",
-      "polymarket_team": "juan sebastian osorio",
-      "polymarket_ask": 0.49,
-      "polymarket_taker_fee": 0.0049,
-      "total_cost": 0.8686,
-      "gap_cents": 9.14,
-      "is_arb": true
     },
     {
       "market_name": "Will Simona Waltert win the Osorio vs Waltert: Round Of 128 match?",
@@ -2329,57 +1993,29 @@
       "is_arb": false
     },
     {
-      "market_name": "Will Tyra Caterina Grant win the Boulter vs Grant: Round Of 128 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUN29BOUGRA-GRA",
-      "kalshi_team": "tyra caterina grant",
-      "kalshi_ask": 0.89,
-      "kalshi_taker_fee": 0.0089,
-      "polymarket_slug": "aec-wta-katbou-tyrgra-2026-06-29",
-      "polymarket_team": "katie boulter",
-      "polymarket_ask": 0.12,
-      "polymarket_taker_fee": 0.0012,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Katie Boulter win the Boulter vs Grant: Round Of 128 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUN29BOUGRA-BOU",
-      "kalshi_team": "katie boulter",
-      "kalshi_ask": 0.12,
-      "kalshi_taker_fee": 0.0012,
-      "polymarket_slug": "aec-wta-katbou-tyrgra-2026-06-29",
-      "polymarket_team": "tyra caterina grant",
-      "polymarket_ask": 0.9,
-      "polymarket_taker_fee": 0.009,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
-      "is_arb": false
-    },
-    {
       "market_name": "Will Talia Gibson win the Gibson vs Bouzkova: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29GIBBOU-GIB",
       "kalshi_team": "talia gibson",
-      "kalshi_ask": 0.11,
-      "kalshi_taker_fee": 0.0011,
+      "kalshi_ask": 0.14,
+      "kalshi_taker_fee": 0.0014,
       "polymarket_slug": "aec-wta-talgib-marbou-2026-06-29",
       "polymarket_team": "marie bouzkova",
-      "polymarket_ask": 0.89,
-      "polymarket_taker_fee": 0.0089,
-      "total_cost": 1.01,
-      "gap_cents": -5.0,
+      "polymarket_ask": 0.85,
+      "polymarket_taker_fee": 0.0085,
+      "total_cost": 0.9999,
+      "gap_cents": -3.99,
       "is_arb": false
     },
     {
       "market_name": "Will Marie Bouzkova win the Gibson vs Bouzkova: Round Of 128 match?",
       "kalshi_ticker": "KXWTAMATCH-26JUN29GIBBOU-BOU",
       "kalshi_team": "marie bouzkova",
-      "kalshi_ask": 0.91,
-      "kalshi_taker_fee": 0.0091,
+      "kalshi_ask": 0.87,
+      "kalshi_taker_fee": 0.0087,
       "polymarket_slug": "aec-wta-talgib-marbou-2026-06-29",
       "polymarket_team": "talia gibson",
-      "polymarket_ask": 0.12,
-      "polymarket_taker_fee": 0.0012,
+      "polymarket_ask": 0.16,
+      "polymarket_taker_fee": 0.0016,
       "total_cost": 1.0403,
       "gap_cents": -8.03,
       "is_arb": false
@@ -2410,62 +2046,6 @@
       "polymarket_taker_fee": 0.0026,
       "total_cost": 1.0302,
       "gap_cents": -7.02,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Maria Timofeeva win the Haddad Maia vs Timofeeva: Round Of 128 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUN29HADTIM-TIM",
-      "kalshi_team": "maria timofeeva",
-      "kalshi_ask": 0.71,
-      "kalshi_taker_fee": 0.0071,
-      "polymarket_slug": "aec-wta-beamai-martim-2026-06-29",
-      "polymarket_team": "beatriz haddad maia",
-      "polymarket_ask": 0.31,
-      "polymarket_taker_fee": 0.0031,
-      "total_cost": 1.0302,
-      "gap_cents": -7.02,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Beatriz Haddad Maia win the Haddad Maia vs Timofeeva: Round Of 128 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUN29HADTIM-HAD",
-      "kalshi_team": "beatriz haddad maia",
-      "kalshi_ask": 0.31,
-      "kalshi_taker_fee": 0.0031,
-      "polymarket_slug": "aec-wta-beamai-martim-2026-06-29",
-      "polymarket_team": "maria timofeeva",
-      "polymarket_ask": 0.7,
-      "polymarket_taker_fee": 0.007,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Elena-Gabriela Ruse win the Ruse vs McNally: Round Of 128 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUN29RUSMCC-RUS",
-      "kalshi_team": "elena gabriela ruse",
-      "kalshi_ask": 0.58,
-      "kalshi_taker_fee": 0.0058,
-      "polymarket_slug": "aec-wta-gabrus-catmcn-2026-06-29",
-      "polymarket_team": "caty mcnally",
-      "polymarket_ask": 0.43,
-      "polymarket_taker_fee": 0.0043,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
-      "is_arb": false
-    },
-    {
-      "market_name": "Will Caty McNally win the Ruse vs McNally: Round Of 128 match?",
-      "kalshi_ticker": "KXWTAMATCH-26JUN29RUSMCC-MCC",
-      "kalshi_team": "caty mcnally",
-      "kalshi_ask": 0.43,
-      "kalshi_taker_fee": 0.0043,
-      "polymarket_slug": "aec-wta-gabrus-catmcn-2026-06-29",
-      "polymarket_team": "gabriela ruse",
-      "polymarket_ask": 0.58,
-      "polymarket_taker_fee": 0.0058,
-      "total_cost": 1.0201,
-      "gap_cents": -6.01,
       "is_arb": false
     },
     {
@@ -2539,6 +2119,16 @@
       "reason": "no polymarket side matched"
     },
     {
+      "ticker": "KXATPMATCH-26JUL01MERMED-MER",
+      "title": "Will Daniel Merida win the Merida vs Medvedev: Round Of 64 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUL01MERMED-MED",
+      "title": "Will Daniil Medvedev win the Merida vs Medvedev: Round Of 64 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
       "ticker": "KXATPMATCH-26JUL01KWONPAU-PAU",
       "title": "Will Tommy Paul win the Kwon vs Paul: Round Of 64 match?",
       "reason": "no polymarket side matched"
@@ -2559,6 +2149,76 @@
       "reason": "no polymarket side matched"
     },
     {
+      "ticker": "KXATPMATCH-26JUL01JODCAR-JOD",
+      "title": "Will Rafael Jodar win the Jodar vs Carreno Busta: Round Of 64 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUL01JODCAR-CAR",
+      "title": "Will Pablo Carreno Busta win the Jodar vs Carreno Busta: Round Of 64 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN30LLASVA-SVA",
+      "title": "Will Zachary Svajda win the Llamas Ruiz vs Svajda: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN30LLASVA-LLA",
+      "title": "Will Pablo Llamas Ruiz win the Llamas Ruiz vs Svajda: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN29NAKPIN-PIN",
+      "title": "Will Jack Pinnington Jones win the Nakashima vs Pinnington Jones: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN29NAKPIN-NAK",
+      "title": "Will Brandon Nakashima win the Nakashima vs Pinnington Jones: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN29DEJHIJ-HIJ",
+      "title": "Will Rinky Hijikata win the De Jong vs Hijikata: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN29DEJHIJ-DEJ",
+      "title": "Will Jesper De Jong win the De Jong vs Hijikata: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN29DEBUR-DE",
+      "title": "Will Alex de Minaur win the de Minaur vs Burruchaga: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN29DEBUR-BUR",
+      "title": "Will Roman Andres Burruchaga win the de Minaur vs Burruchaga: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN29HANMPE-MPE",
+      "title": "Will Giovanni Mpetshi Perricard win the Hanfmann vs Mpetshi Perricard: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXATPMATCH-26JUN29HANMPE-HAN",
+      "title": "Will Yannick Hanfmann win the Hanfmann vs Mpetshi Perricard: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUL01YASBOU-YAS",
+      "title": "Will Dayana Yastremska win the Yastremska vs Bouzas Maneiro: Round Of 64 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUL01YASBOU-BOU",
+      "title": "Will Jessica Bouzas Maneiro win the Yastremska vs Bouzas Maneiro: Round Of 64 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
       "ticker": "KXWTAMATCH-26JUL01SONLIU-SON",
       "title": "Will Zeynep Sonmez win the Sonmez vs Liu: Round Of 64 match?",
       "reason": "no polymarket side matched"
@@ -2566,6 +2226,16 @@
     {
       "ticker": "KXWTAMATCH-26JUL01SONLIU-LIU",
       "title": "Will Claire Liu win the Sonmez vs Liu: Round Of 64 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUL01PEGSOR-SOR",
+      "title": "Will Sara Sorribes Tormo win the Pegula vs Sorribes Tormo: Round Of 64 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUL01PEGSOR-PEG",
+      "title": "Will Jessica Pegula win the Pegula vs Sorribes Tormo: Round Of 64 match?",
       "reason": "no polymarket side matched"
     },
     {
@@ -2591,6 +2261,31 @@
     {
       "ticker": "KXWTAMATCH-26JUN29SHNLYS-LYS",
       "title": "Will Eva Lys win the Shnaider vs Lys: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUN29BOUGRA-BOU",
+      "title": "Will Katie Boulter win the Boulter vs Grant: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUN29HADTIM-TIM",
+      "title": "Will Maria Timofeeva win the Haddad Maia vs Timofeeva: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUN29HADTIM-HAD",
+      "title": "Will Beatriz Haddad Maia win the Haddad Maia vs Timofeeva: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUN29RUSMCC-RUS",
+      "title": "Will Elena-Gabriela Ruse win the Ruse vs McNally: Round Of 128 match?",
+      "reason": "no polymarket side matched"
+    },
+    {
+      "ticker": "KXWTAMATCH-26JUN29RUSMCC-MCC",
+      "title": "Will Caty McNally win the Ruse vs McNally: Round Of 128 match?",
       "reason": "no polymarket side matched"
     }
   ],
@@ -2802,8 +2497,8 @@
     {
       "ticker": "KXATPMATCH-26JUN29DEJHIJ-HIJ",
       "title": "Will Rinky Hijikata win the De Jong vs Hijikata: Round Of 128 match?",
-      "ask": 0.84,
-      "taker_fee": 0.0084
+      "ask": 0.85,
+      "taker_fee": 0.0085
     },
     {
       "ticker": "KXATPMATCH-26JUN29DEJHIJ-DEJ",
@@ -2826,14 +2521,14 @@
     {
       "ticker": "KXATPMATCH-26JUN29MANDRO-MAN",
       "title": "Will Adrian Mannarino win the Mannarino vs Droguet: Round Of 128 match?",
-      "ask": 0.93,
-      "taker_fee": 0.0093
+      "ask": 0.94,
+      "taker_fee": 0.0094
     },
     {
       "ticker": "KXATPMATCH-26JUN29MANDRO-DRO",
       "title": "Will Titouan Droguet win the Mannarino vs Droguet: Round Of 128 match?",
-      "ask": 0.09,
-      "taker_fee": 0.0009
+      "ask": 0.07,
+      "taker_fee": 0.0007
     },
     {
       "ticker": "KXATPMATCH-26JUN29MAJTAB-TAB",
@@ -2844,8 +2539,8 @@
     {
       "ticker": "KXATPMATCH-26JUN29MAJTAB-MAJ",
       "title": "Will Kamil Majchrzak win the Majchrzak vs Tabilo: Round Of 128 match?",
-      "ask": 0.86,
-      "taker_fee": 0.0086
+      "ask": 0.85,
+      "taker_fee": 0.0085
     },
     {
       "ticker": "KXATPMATCH-26JUN29KHAHAR-KHA",
@@ -2862,14 +2557,14 @@
     {
       "ticker": "KXATPMATCH-26JUN29HANMPE-MPE",
       "title": "Will Giovanni Mpetshi Perricard win the Hanfmann vs Mpetshi Perricard: Round Of 128 match?",
-      "ask": 0.74,
-      "taker_fee": 0.0074
+      "ask": 0.76,
+      "taker_fee": 0.0076
     },
     {
       "ticker": "KXATPMATCH-26JUN29HANMPE-HAN",
       "title": "Will Yannick Hanfmann win the Hanfmann vs Mpetshi Perricard: Round Of 128 match?",
-      "ask": 0.28,
-      "taker_fee": 0.0028
+      "ask": 0.25,
+      "taker_fee": 0.0025
     },
     {
       "ticker": "KXATPMATCH-26JUN29GRIDUC-GRI",
@@ -2910,8 +2605,8 @@
     {
       "ticker": "KXATPMATCH-26JUN29SWEDIM-SWE",
       "title": "Will Dane Sweeny win the Sweeny vs Dimitrov: Round Of 128 match?",
-      "ask": 0.23,
-      "taker_fee": 0.0023
+      "ask": 0.24,
+      "taker_fee": 0.0024
     },
     {
       "ticker": "KXATPMATCH-26JUN29SWEDIM-DIM",
@@ -2934,8 +2629,8 @@
     {
       "ticker": "KXATPMATCH-26JUN29COLFIL-FIL",
       "title": "Will Arthur Fils win the Collignon vs Fils: Round Of 128 match?",
-      "ask": 0.58,
-      "taker_fee": 0.0058
+      "ask": 0.59,
+      "taker_fee": 0.0059
     },
     {
       "ticker": "KXATPMATCH-26JUN29COLFIL-COL",
@@ -2958,14 +2653,14 @@
     {
       "ticker": "KXATPMATCH-26JUN29SHIFAR-SHI",
       "title": "Will Sho Shimabukuro win the Shimabukuro vs Faria: Round Of 128 match?",
-      "ask": 0.16,
-      "taker_fee": 0.0016
+      "ask": 0.14,
+      "taker_fee": 0.0014
     },
     {
       "ticker": "KXATPMATCH-26JUN29SHIFAR-FAR",
       "title": "Will Jaime Faria win the Shimabukuro vs Faria: Round Of 128 match?",
-      "ask": 0.85,
-      "taker_fee": 0.0085
+      "ask": 0.87,
+      "taker_fee": 0.0087
     },
     {
       "ticker": "KXATPMATCH-26JUN29DZUFER-FER",
@@ -2988,8 +2683,8 @@
     {
       "ticker": "KXATPMATCH-26JUN29VIRSHE-SHE",
       "title": "Will Ben Shelton win the Virtanen vs Shelton: Round Of 128 match?",
-      "ask": 0.81,
-      "taker_fee": 0.0081
+      "ask": 0.82,
+      "taker_fee": 0.0082
     },
     {
       "ticker": "KXATPMATCH-26JUN29KYPMCD-MCD",
@@ -3132,8 +2827,8 @@
     {
       "ticker": "KXATPMATCH-26JUN29ARNHAL-ARN",
       "title": "Will Matteo Arnaldi win the Arnaldi vs Halys: Round Of 128 match?",
-      "ask": 0.44,
-      "taker_fee": 0.0044
+      "ask": 0.43,
+      "taker_fee": 0.0043
     },
     {
       "ticker": "KXATPMATCH-26JUN29MOUGIR-MOU",
@@ -3150,14 +2845,14 @@
     {
       "ticker": "KXATPMATCH-26JUN29ROYWEN-WEN",
       "title": "Will Harry Wendelken win the Royer vs Wendelken: Round Of 128 match?",
-      "ask": 0.65,
-      "taker_fee": 0.0065
+      "ask": 0.61,
+      "taker_fee": 0.0061
     },
     {
       "ticker": "KXATPMATCH-26JUN29ROYWEN-ROY",
       "title": "Will Valentin Royer win the Royer vs Wendelken: Round Of 128 match?",
-      "ask": 0.35,
-      "taker_fee": 0.0035
+      "ask": 0.41,
+      "taker_fee": 0.0041
     },
     {
       "ticker": "KXATPMATCH-26JUN29BLOZVE-ZVE",
@@ -3240,8 +2935,8 @@
     {
       "ticker": "KXWTAMATCH-26JUL01ALETAR-ALE",
       "title": "Will Ekaterina Alexandrova win the Alexandrova vs Tararudee: Round Of 64 match?",
-      "ask": 0.83,
-      "taker_fee": 0.0083
+      "ask": 0.82,
+      "taker_fee": 0.0082
     },
     {
       "ticker": "KXWTAMATCH-26JUL01KREAND-KRE",
@@ -3444,8 +3139,8 @@
     {
       "ticker": "KXWTAMATCH-26JUN29STABLI-BLI",
       "title": "Will Anna Blinkova win the Starodubtseva vs Blinkova: Round Of 128 match?",
-      "ask": 0.45,
-      "taker_fee": 0.0045
+      "ask": 0.44,
+      "taker_fee": 0.0044
     },
     {
       "ticker": "KXWTAMATCH-26JUN29PODKOS-POD",
@@ -3462,14 +3157,14 @@
     {
       "ticker": "KXWTAMATCH-26JUN29PAOMON-PAO",
       "title": "Will Jasmine Paolini win the Paolini vs Montgomery: Round Of 128 match?",
-      "ask": 0.33,
-      "taker_fee": 0.0033
+      "ask": 0.2,
+      "taker_fee": 0.002
     },
     {
       "ticker": "KXWTAMATCH-26JUN29PAOMON-MON",
       "title": "Will Robin Montgomery win the Paolini vs Montgomery: Round Of 128 match?",
-      "ask": 0.7,
-      "taker_fee": 0.007
+      "ask": 0.83,
+      "taker_fee": 0.0083
     },
     {
       "ticker": "KXWTAMATCH-26JUN29SHYGOL-SHY",
@@ -3486,26 +3181,26 @@
     {
       "ticker": "KXWTAMATCH-26JUN29KALRAK-RAK",
       "title": "Will Kamilla Rakhimova win the Kalinina vs Rakhimova: Round Of 128 match?",
-      "ask": 0.14,
-      "taker_fee": 0.0014
+      "ask": 0.34,
+      "taker_fee": 0.0034
     },
     {
       "ticker": "KXWTAMATCH-26JUN29KALRAK-KAL",
       "title": "Will Anhelina Kalinina win the Kalinina vs Rakhimova: Round Of 128 match?",
-      "ask": 0.87,
-      "taker_fee": 0.0087
+      "ask": 0.69,
+      "taker_fee": 0.0069
     },
     {
       "ticker": "KXWTAMATCH-26JUN29SAKTAU-TAU",
       "title": "Will Clara Tauson win the Sakkari vs Tauson: Round Of 128 match?",
-      "ask": 0.14,
-      "taker_fee": 0.0014
+      "ask": 0.08,
+      "taker_fee": 0.0008
     },
     {
       "ticker": "KXWTAMATCH-26JUN29SAKTAU-SAK",
       "title": "Will Maria Sakkari win the Sakkari vs Tauson: Round Of 128 match?",
-      "ask": 0.88,
-      "taker_fee": 0.0088
+      "ask": 0.93,
+      "taker_fee": 0.0093
     },
     {
       "ticker": "KXWTAMATCH-26JUN29EALZAR-ZAR",
@@ -3534,14 +3229,14 @@
     {
       "ticker": "KXWTAMATCH-26JUN29VALPLI-VAL",
       "title": "Will Tereza Valentova win the Valentova vs Pliskova: Round Of 128 match?",
-      "ask": 0.23,
-      "taker_fee": 0.0023
+      "ask": 0.16,
+      "taker_fee": 0.0016
     },
     {
       "ticker": "KXWTAMATCH-26JUN29VALPLI-PLI",
       "title": "Will Karolina Pliskova win the Valentova vs Pliskova: Round Of 128 match?",
-      "ask": 0.79,
-      "taker_fee": 0.0079
+      "ask": 0.84,
+      "taker_fee": 0.0084
     },
     {
       "ticker": "KXWTAMATCH-26JUN29TOWSWI-TOW",
@@ -3564,38 +3259,38 @@
     {
       "ticker": "KXWTAMATCH-26JUN29MARKEN-MAR",
       "title": "Will Petra Marcinko win the Marcinko vs Kenin: Round Of 128 match?",
-      "ask": 0.28,
-      "taker_fee": 0.0028
+      "ask": 0.07,
+      "taker_fee": 0.0007
     },
     {
       "ticker": "KXWTAMATCH-26JUN29MARKEN-KEN",
       "title": "Will Sofia Kenin win the Marcinko vs Kenin: Round Of 128 match?",
-      "ask": 0.74,
-      "taker_fee": 0.0074
-    },
-    {
-      "ticker": "KXWTAMATCH-26JUN29BEGSWA-SWA",
-      "title": "Will Katie Swan win the Begu vs Swan: Round Of 128 match?",
       "ask": 0.94,
       "taker_fee": 0.0094
     },
     {
+      "ticker": "KXWTAMATCH-26JUN29BEGSWA-SWA",
+      "title": "Will Katie Swan win the Begu vs Swan: Round Of 128 match?",
+      "ask": 0.97,
+      "taker_fee": 0.0097
+    },
+    {
       "ticker": "KXWTAMATCH-26JUN29BEGSWA-BEG",
       "title": "Will Irina-Camelia Begu win the Begu vs Swan: Round Of 128 match?",
-      "ask": 0.08,
-      "taker_fee": 0.0008
+      "ask": 0.04,
+      "taker_fee": 0.0004
     },
     {
       "ticker": "KXWTAMATCH-26JUN29DAYKEY-KEY",
       "title": "Will Madison Keys win the Day vs Keys: Round Of 128 match?",
-      "ask": 0.82,
-      "taker_fee": 0.0082
+      "ask": 0.66,
+      "taker_fee": 0.0066
     },
     {
       "ticker": "KXWTAMATCH-26JUN29DAYKEY-DAY",
       "title": "Will Kayla Day win the Day vs Keys: Round Of 128 match?",
-      "ask": 0.22,
-      "taker_fee": 0.0022
+      "ask": 0.36,
+      "taker_fee": 0.0036
     },
     {
       "ticker": "KXWTAMATCH-26JUN29CIRBEJ-CIR",
@@ -3670,28 +3365,22 @@
       "taker_fee": 0.0036
     },
     {
-      "ticker": "KXWTAMATCH-26JUN29BOUGRA-GRA",
-      "title": "Will Tyra Caterina Grant win the Boulter vs Grant: Round Of 128 match?",
-      "ask": 0.89,
-      "taker_fee": 0.0089
-    },
-    {
       "ticker": "KXWTAMATCH-26JUN29BOUGRA-BOU",
       "title": "Will Katie Boulter win the Boulter vs Grant: Round Of 128 match?",
-      "ask": 0.12,
-      "taker_fee": 0.0012
+      "ask": 0.01,
+      "taker_fee": 0.0001
     },
     {
       "ticker": "KXWTAMATCH-26JUN29GIBBOU-GIB",
       "title": "Will Talia Gibson win the Gibson vs Bouzkova: Round Of 128 match?",
-      "ask": 0.11,
-      "taker_fee": 0.0011
+      "ask": 0.14,
+      "taker_fee": 0.0014
     },
     {
       "ticker": "KXWTAMATCH-26JUN29GIBBOU-BOU",
       "title": "Will Marie Bouzkova win the Gibson vs Bouzkova: Round Of 128 match?",
-      "ask": 0.91,
-      "taker_fee": 0.0091
+      "ask": 0.87,
+      "taker_fee": 0.0087
     },
     {
       "ticker": "KXWTAMATCH-26JUN29MERSIE-SIE",
@@ -3748,80 +3437,80 @@
       "title": "Niels McDonald vs. Juan Martin",
       "team_abbr": "niemcd",
       "team_name": "niels mcdonald",
-      "ask": 0.18,
-      "taker_fee": 0.0018
+      "ask": 0.12,
+      "taker_fee": 0.0012
     },
     {
       "slug": "aec-atp-niemcd-juamar-2026-06-29",
       "title": "Niels McDonald vs. Juan Martin",
       "team_abbr": "juamar",
       "team_name": "juan martin",
-      "ask": 0.83,
-      "taker_fee": 0.0083
+      "ask": 0.89,
+      "taker_fee": 0.0089
     },
     {
       "slug": "aec-atp-manman-ioaxil-2026-06-30",
       "title": "Manoj Dhamne Manas vs. Ioannis Xilas",
       "team_abbr": "manman",
       "team_name": "manoj dhamne manas",
-      "ask": 0.64,
-      "taker_fee": 0.0064
+      "ask": 0.3,
+      "taker_fee": 0.003
     },
     {
       "slug": "aec-atp-manman-ioaxil-2026-06-30",
       "title": "Manoj Dhamne Manas vs. Ioannis Xilas",
       "team_abbr": "ioaxil",
       "team_name": "ioannis xilas",
-      "ask": 0.37,
-      "taker_fee": 0.0037
+      "ask": 0.71,
+      "taker_fee": 0.0071
     },
     {
       "slug": "aec-atp-adrman-titdro-2026-06-29",
       "title": "Adrian Mannarino vs. Titouan Droguet",
       "team_abbr": "adrman",
       "team_name": "adrian mannarino",
-      "ask": 0.93,
-      "taker_fee": 0.0093
+      "ask": 0.94,
+      "taker_fee": 0.0094
     },
     {
       "slug": "aec-atp-adrman-titdro-2026-06-29",
       "title": "Adrian Mannarino vs. Titouan Droguet",
       "team_abbr": "titdro",
       "team_name": "titouan droguet",
-      "ask": 0.08,
-      "taker_fee": 0.0008
+      "ask": 0.07,
+      "taker_fee": 0.0007
     },
     {
       "slug": "aec-atp-facaco-migtob-2026-06-29",
       "title": "Facundo Acosta vs. Miguel Tobon",
       "team_abbr": "facaco",
       "team_name": "facundo acosta",
-      "ask": 0.98,
-      "taker_fee": 0.0098
+      "ask": 0.99,
+      "taker_fee": 0.0099
     },
     {
       "slug": "aec-atp-facaco-migtob-2026-06-29",
       "title": "Facundo Acosta vs. Miguel Tobon",
       "team_abbr": "migtob",
       "team_name": "miguel tobon",
-      "ask": 0.03,
-      "taker_fee": 0.0003
+      "ask": 0.02,
+      "taker_fee": 0.0002
     },
     {
       "slug": "aec-atp-yanhan-gioper-2026-06-29",
       "title": "Yannick Hanfmann vs. Giovanni Mpetshi Perricard",
       "team_abbr": "yanhan",
       "team_name": "yannick hanfmann",
-      "ask": 0.27,
-      "taker_fee": 0.0027
+      "ask": 0.26,
+      "taker_fee": 0.0026
     },
     {
       "slug": "aec-atp-yanhan-gioper-2026-06-29",
       "title": "Yannick Hanfmann vs. Giovanni Mpetshi Perricard",
       "team_abbr": "gioper",
       "team_name": "giovanni mpetshi perricard",
-      "ask": 0.74,
-      "taker_fee": 0.0074
+      "ask": 0.75,
+      "taker_fee": 0.0075
     },
     {
       "slug": "aec-atp-fracom-matdon-2026-06-30",
@@ -3844,40 +3533,40 @@
       "title": "Valentin Royer vs. Harry Wendelken",
       "team_abbr": "valroy",
       "team_name": "valentin royer",
-      "ask": 0.37,
-      "taker_fee": 0.0037
+      "ask": 0.38,
+      "taker_fee": 0.0038
     },
     {
       "slug": "aec-atp-valroy-harwen-2026-06-29",
       "title": "Valentin Royer vs. Harry Wendelken",
       "team_abbr": "harwen",
       "team_name": "harry wendelken",
-      "ask": 0.66,
-      "taker_fee": 0.0066
+      "ask": 0.63,
+      "taker_fee": 0.0063
     },
     {
       "slug": "aec-atp-shoshi-jaifar-2026-06-29",
       "title": "Sho Shimabukuro vs. Jaime Faria",
       "team_abbr": "shoshi",
       "team_name": "sho shimabukuro",
-      "ask": 0.16,
-      "taker_fee": 0.0016
+      "ask": 0.14,
+      "taker_fee": 0.0014
     },
     {
       "slug": "aec-atp-shoshi-jaifar-2026-06-29",
       "title": "Sho Shimabukuro vs. Jaime Faria",
       "team_abbr": "jaifar",
       "team_name": "jaime faria",
-      "ask": 0.85,
-      "taker_fee": 0.0085
+      "ask": 0.87,
+      "taker_fee": 0.0087
     },
     {
       "slug": "aec-atp-kammaj-aletab-2026-06-29",
       "title": "Kamil Majchrzak vs. Alejandro Tabilo",
       "team_abbr": "kammaj",
       "team_name": "kamil majchrzak",
-      "ask": 0.86,
-      "taker_fee": 0.0086
+      "ask": 0.85,
+      "taker_fee": 0.0085
     },
     {
       "slug": "aec-atp-kammaj-aletab-2026-06-29",
@@ -3908,64 +3597,64 @@
       "title": "Keegan Smith vs. Gabriel Ghetu",
       "team_abbr": "keesmi",
       "team_name": "keegan smith",
-      "ask": 0.23,
-      "taker_fee": 0.0023
+      "ask": 0.25,
+      "taker_fee": 0.0025
     },
     {
       "slug": "aec-atp-keesmi-gabghe-2026-06-30",
       "title": "Keegan Smith vs. Gabriel Ghetu",
       "team_abbr": "gabghe",
       "team_name": "gabriel ghetu",
-      "ask": 0.78,
-      "taker_fee": 0.0078
+      "ask": 0.76,
+      "taker_fee": 0.0076
     },
     {
       "slug": "aec-atp-radalb-zsopir-2026-06-30",
       "title": "Radu Albot vs. Zsombor Piros",
       "team_abbr": "radalb",
       "team_name": "radu albot",
-      "ask": 0.06,
-      "taker_fee": 0.0006
+      "ask": 0.07,
+      "taker_fee": 0.0007
     },
     {
       "slug": "aec-atp-radalb-zsopir-2026-06-30",
       "title": "Radu Albot vs. Zsombor Piros",
       "team_abbr": "zsopir",
       "team_name": "zsombor piros",
-      "ask": 0.95,
-      "taker_fee": 0.0095
+      "ask": 0.94,
+      "taker_fee": 0.0094
     },
     {
       "slug": "aec-atp-kilfel-sampie-2026-06-30",
       "title": "Kilian Feldbausch vs. Samuele Pieri",
       "team_abbr": "kilfel",
       "team_name": "kilian feldbausch",
-      "ask": 0.92,
-      "taker_fee": 0.0092
+      "ask": 0.95,
+      "taker_fee": 0.0095
     },
     {
       "slug": "aec-atp-kilfel-sampie-2026-06-30",
       "title": "Kilian Feldbausch vs. Samuele Pieri",
       "team_abbr": "sampie",
       "team_name": "samuele pieri",
-      "ask": 0.09,
-      "taker_fee": 0.0009
+      "ask": 0.06,
+      "taker_fee": 0.0006
     },
     {
       "slug": "aec-atp-ilisim-dimkuz-2026-06-30",
       "title": "Ilia Simakin vs. Dimitar Kuzmanov",
       "team_abbr": "ilisim",
       "team_name": "ilia simakin",
-      "ask": 0.48,
-      "taker_fee": 0.0048
+      "ask": 0.63,
+      "taker_fee": 0.0063
     },
     {
       "slug": "aec-atp-ilisim-dimkuz-2026-06-30",
       "title": "Ilia Simakin vs. Dimitar Kuzmanov",
       "team_abbr": "dimkuz",
       "team_name": "dimitar kuzmanov",
-      "ask": 0.54,
-      "taker_fee": 0.0054
+      "ask": 0.38,
+      "taker_fee": 0.0038
     },
     {
       "slug": "aec-atp-fedbon-inamon-2026-06-30",
@@ -4052,16 +3741,16 @@
       "title": "Damir Dzumhur vs. Arthur Fery",
       "team_abbr": "damdzu",
       "team_name": "damir dzumhur",
-      "ask": 0.22,
-      "taker_fee": 0.0022
+      "ask": 0.21,
+      "taker_fee": 0.0021
     },
     {
       "slug": "aec-atp-damdzu-artfer-2026-06-29",
       "title": "Damir Dzumhur vs. Arthur Fery",
       "team_abbr": "artfer",
       "team_name": "arthur fery",
-      "ask": 0.79,
-      "taker_fee": 0.0079
+      "ask": 0.8,
+      "taker_fee": 0.008
     },
     {
       "slug": "aec-atp-ottvir-benshe-2026-06-29",
@@ -4180,16 +3869,16 @@
       "title": "Pavel Lagutin vs. Eliakim Coulibaly",
       "team_abbr": "pavlag",
       "team_name": "pavel lagutin",
-      "ask": 0.46,
-      "taker_fee": 0.0046
+      "ask": 0.45,
+      "taker_fee": 0.0045
     },
     {
       "slug": "aec-atp-pavlag-elicou-2026-06-30",
       "title": "Pavel Lagutin vs. Eliakim Coulibaly",
       "team_abbr": "elicou",
       "team_name": "eliakim coulibaly",
-      "ask": 0.56,
-      "taker_fee": 0.0056
+      "ask": 0.57,
+      "taker_fee": 0.0057
     },
     {
       "slug": "aec-atp-thakok-alebub-2026-06-29",
@@ -4212,16 +3901,16 @@
       "title": "Pablo Llamas Ruiz vs. Zachary Svajda",
       "team_abbr": "pabrui",
       "team_name": "pablo llamas ruiz",
-      "ask": 0.3,
-      "taker_fee": 0.003
+      "ask": 0.29,
+      "taker_fee": 0.0029
     },
     {
       "slug": "aec-atp-pabrui-zacsva-2026-06-29",
       "title": "Pablo Llamas Ruiz vs. Zachary Svajda",
       "team_abbr": "zacsva",
       "team_name": "zachary svajda",
-      "ask": 0.71,
-      "taker_fee": 0.0071
+      "ask": 0.72,
+      "taker_fee": 0.0072
     },
     {
       "slug": "aec-atp-stepal-denyev-2026-06-30",
@@ -4628,16 +4317,16 @@
       "title": "Tallon Griekspoor vs. James Duckworth",
       "team_abbr": "talgri",
       "team_name": "tallon griekspoor",
-      "ask": 0.69,
-      "taker_fee": 0.0069
+      "ask": 0.68,
+      "taker_fee": 0.0068
     },
     {
       "slug": "aec-atp-talgri-jamduc-2026-06-29",
       "title": "Tallon Griekspoor vs. James Duckworth",
       "team_abbr": "jamduc",
       "team_name": "james duckworth",
-      "ask": 0.32,
-      "taker_fee": 0.0032
+      "ask": 0.33,
+      "taker_fee": 0.0033
     },
     {
       "slug": "aec-atp-marnav-flacob-2026-06-29",
@@ -4660,16 +4349,16 @@
       "title": "Juan Sebastian Osorio vs. Peter Bertran",
       "team_abbr": "juaoso",
       "team_name": "juan sebastian osorio",
-      "ask": 0.49,
-      "taker_fee": 0.0049
+      "ask": 0.5,
+      "taker_fee": 0.005
     },
     {
       "slug": "aec-atp-juaoso-petber-2026-06-30",
       "title": "Juan Sebastian Osorio vs. Peter Bertran",
       "team_abbr": "petber",
       "team_name": "peter bertran",
-      "ask": 0.52,
-      "taker_fee": 0.0052
+      "ask": 0.51,
+      "taker_fee": 0.0051
     },
     {
       "slug": "aec-atp-jirleh-alepop-2026-06-29",
@@ -4804,16 +4493,16 @@
       "title": "Johan Alexander Rodriguez vs. Matheus Pucinelli de Almeida",
       "team_abbr": "johrod",
       "team_name": "johan alexander rodriguez",
-      "ask": 0.28,
-      "taker_fee": 0.0028
+      "ask": 0.29,
+      "taker_fee": 0.0029
     },
     {
       "slug": "aec-atp-johrod-matalm-2026-06-29",
       "title": "Johan Alexander Rodriguez vs. Matheus Pucinelli de Almeida",
       "team_abbr": "matalm",
       "team_name": "matheus pucinelli de almeida",
-      "ask": 0.73,
-      "taker_fee": 0.0073
+      "ask": 0.72,
+      "taker_fee": 0.0072
     },
     {
       "slug": "aec-atp-hercas-margal-2026-06-29",
@@ -4852,16 +4541,16 @@
       "title": "Rio Noguchi vs. Alex Martinez",
       "team_abbr": "rionog",
       "team_name": "rio noguchi",
-      "ask": 0.66,
-      "taker_fee": 0.0066
+      "ask": 0.64,
+      "taker_fee": 0.0064
     },
     {
       "slug": "aec-atp-rionog-alemar-2026-06-29",
       "title": "Rio Noguchi vs. Alex Martinez",
       "team_abbr": "alemar",
       "team_name": "alex martinez",
-      "ask": 0.35,
-      "taker_fee": 0.0035
+      "ask": 0.37,
+      "taker_fee": 0.0037
     },
     {
       "slug": "aec-atp-juaser-aleher-2026-06-29",
@@ -4932,8 +4621,8 @@
       "title": "Bruno Fernandez vs. Rodrigo Pacheco",
       "team_abbr": "brufer",
       "team_name": "bruno fernandez",
-      "ask": 0.2,
-      "taker_fee": 0.002
+      "ask": 0.21,
+      "taker_fee": 0.0021
     },
     {
       "slug": "aec-atp-brufer-rodpac-2026-06-29",
@@ -5060,16 +4749,16 @@
       "title": "Andrej Nedic vs. Franco Roncadelli",
       "team_abbr": "andned",
       "team_name": "andrej nedic",
-      "ask": 0.8,
-      "taker_fee": 0.008
+      "ask": 0.79,
+      "taker_fee": 0.0079
     },
     {
       "slug": "aec-atp-andned-fraron-2026-07-01",
       "title": "Andrej Nedic vs. Franco Roncadelli",
       "team_abbr": "fraron",
       "team_name": "franco roncadelli",
-      "ask": 0.33,
-      "taker_fee": 0.0033
+      "ask": 0.32,
+      "taker_fee": 0.0032
     },
     {
       "slug": "aec-atp-gushei-alebar-2026-07-01",
@@ -5092,8 +4781,8 @@
       "title": "Maks Kasnikowski vs. Andres Santamarta",
       "team_abbr": "makkas",
       "team_name": "maks kasnikowski",
-      "ask": 0.71,
-      "taker_fee": 0.0071
+      "ask": 0.7,
+      "taker_fee": 0.007
     },
     {
       "slug": "aec-atp-makkas-andsan-2026-06-30",
@@ -5116,8 +4805,8 @@
       "title": "Marat Sharipov vs. Dominic Stephan Stricker",
       "team_abbr": "domstr",
       "team_name": "dominic stephan stricker",
-      "ask": 0.98,
-      "taker_fee": 0.0098
+      "ask": 0.79,
+      "taker_fee": 0.0079
     },
     {
       "slug": "aec-atp-danagu-danmed-2026-06-30",
@@ -5252,152 +4941,144 @@
       "title": "Anhelina Kalinina vs. Kamilla Rakhimova",
       "team_abbr": "anhkal",
       "team_name": "anhelina kalinina",
-      "ask": 0.83,
-      "taker_fee": 0.0083
+      "ask": 0.66,
+      "taker_fee": 0.0066
     },
     {
       "slug": "aec-wta-anhkal-kamrak-2026-06-29",
       "title": "Anhelina Kalinina vs. Kamilla Rakhimova",
       "team_abbr": "kamrak",
       "team_name": "kamilla rakhimova",
-      "ask": 0.18,
-      "taker_fee": 0.0018
+      "ask": 0.35,
+      "taker_fee": 0.0035
     },
     {
       "slug": "aec-wta-marsak-clatau-2026-06-29",
       "title": "Maria Sakkari vs. Clara Tauson",
       "team_abbr": "marsak",
       "team_name": "maria sakkari",
-      "ask": 0.87,
-      "taker_fee": 0.0087
+      "ask": 0.94,
+      "taker_fee": 0.0094
     },
     {
       "slug": "aec-wta-marsak-clatau-2026-06-29",
       "title": "Maria Sakkari vs. Clara Tauson",
       "team_abbr": "clatau",
       "team_name": "clara tauson",
-      "ask": 0.14,
-      "taker_fee": 0.0014
+      "ask": 0.07,
+      "taker_fee": 0.0007
     },
     {
       "slug": "aec-wta-talgib-marbou-2026-06-29",
       "title": "Talia Gibson vs. Marie Bouzkova",
       "team_abbr": "talgib",
       "team_name": "talia gibson",
-      "ask": 0.12,
-      "taker_fee": 0.0012
+      "ask": 0.16,
+      "taker_fee": 0.0016
     },
     {
       "slug": "aec-wta-talgib-marbou-2026-06-29",
       "title": "Talia Gibson vs. Marie Bouzkova",
       "team_abbr": "marbou",
       "team_name": "marie bouzkova",
-      "ask": 0.89,
-      "taker_fee": 0.0089
+      "ask": 0.85,
+      "taker_fee": 0.0085
     },
     {
       "slug": "aec-wta-iribeg-katswa-2026-06-29",
       "title": "Irina-Camelia Begu vs. Katie Swan",
       "team_abbr": "iribeg",
       "team_name": "irina camelia begu",
-      "ask": 0.07,
-      "taker_fee": 0.0007
+      "ask": 0.03,
+      "taker_fee": 0.0003
     },
     {
       "slug": "aec-wta-iribeg-katswa-2026-06-29",
       "title": "Irina-Camelia Begu vs. Katie Swan",
       "team_abbr": "katswa",
       "team_name": "katie swan",
-      "ask": 0.94,
-      "taker_fee": 0.0094
+      "ask": 0.98,
+      "taker_fee": 0.0098
     },
     {
       "slug": "aec-wta-petmar-sofken-2026-06-29",
       "title": "Petra Marcinko vs. Sofia Kenin",
       "team_abbr": "petmar",
       "team_name": "petra marcinko",
-      "ask": 0.28,
-      "taker_fee": 0.0028
+      "ask": 0.07,
+      "taker_fee": 0.0007
     },
     {
       "slug": "aec-wta-petmar-sofken-2026-06-29",
       "title": "Petra Marcinko vs. Sofia Kenin",
       "team_abbr": "sofken",
       "team_name": "sofia kenin",
-      "ask": 0.73,
-      "taker_fee": 0.0073
+      "ask": 0.94,
+      "taker_fee": 0.0094
     },
     {
       "slug": "aec-wta-amaani-lingjo-2026-06-29",
       "title": "Amanda Anisimova vs. Lina Gjorcheska",
       "team_abbr": "lingjo",
       "team_name": "lina gjorcheska",
-      "ask": 0.02,
-      "taker_fee": 0.0002
+      "ask": 0.01,
+      "taker_fee": 0.0001
     },
     {
       "slug": "aec-wta-terval-karpli-2026-06-29",
       "title": "Tereza Valentova vs. Karolina Pliskova",
       "team_abbr": "terval",
       "team_name": "tereza valentova",
-      "ask": 0.26,
-      "taker_fee": 0.0026
+      "ask": 0.12,
+      "taker_fee": 0.0012
     },
     {
       "slug": "aec-wta-terval-karpli-2026-06-29",
       "title": "Tereza Valentova vs. Karolina Pliskova",
       "team_abbr": "karpli",
       "team_name": "karolina pliskova",
-      "ask": 0.75,
-      "taker_fee": 0.0075
+      "ask": 0.89,
+      "taker_fee": 0.0089
     },
     {
       "slug": "aec-wta-jaspao-robmon-2026-06-29",
       "title": "Jasmine Paolini vs. Robin Montgomery",
       "team_abbr": "jaspao",
       "team_name": "jasmine paolini",
-      "ask": 0.32,
-      "taker_fee": 0.0032
+      "ask": 0.19,
+      "taker_fee": 0.0019
     },
     {
       "slug": "aec-wta-jaspao-robmon-2026-06-29",
       "title": "Jasmine Paolini vs. Robin Montgomery",
       "team_abbr": "robmon",
       "team_name": "robin montgomery",
-      "ask": 0.69,
-      "taker_fee": 0.0069
+      "ask": 0.82,
+      "taker_fee": 0.0082
     },
     {
       "slug": "aec-wta-katbou-tyrgra-2026-06-29",
       "title": "Katie Boulter vs. Tyra Caterina Grant",
       "team_abbr": "katbou",
       "team_name": "katie boulter",
-      "ask": 0.12,
-      "taker_fee": 0.0012
-    },
-    {
-      "slug": "aec-wta-katbou-tyrgra-2026-06-29",
-      "title": "Katie Boulter vs. Tyra Caterina Grant",
-      "team_abbr": "tyrgra",
-      "team_name": "tyra caterina grant",
-      "ask": 0.9,
-      "taker_fee": 0.009
+      "ask": 0.01,
+      "taker_fee": 0.0001
     },
     {
       "slug": "aec-wta-kayday-madkey-2026-06-29",
       "title": "Kayla Day vs. Madison Keys",
       "team_abbr": "kayday",
       "team_name": "kayla day",
-      "ask": 0.22,
-      "taker_fee": 0.0022
+      "ask": 0.36,
+      "taker_fee": 0.0036
     },
     {
       "slug": "aec-wta-kayday-madkey-2026-06-29",
       "title": "Kayla Day vs. Madison Keys",
       "team_abbr": "madkey",
       "team_name": "madison keys",
-      "ask": 0.79,
-      "taker_fee": 0.0079
+      "ask": 0.65,
+      "taker_fee": 0.0065
     },
     {
       "slug": "aec-wta-kimbir-alikor-2026-06-29",
@@ -5900,8 +5581,8 @@
       "title": "Ekaterina Alexandrova vs. Lanlana Tararudee",
       "team_abbr": "ekaale",
       "team_name": "ekaterina alexandrova",
-      "ask": 0.82,
-      "taker_fee": 0.0082
+      "ask": 0.825,
+      "taker_fee": 0.00825
     },
     {
       "slug": "aec-wta-ekaale-lantar-2026-06-30",
