@@ -83,8 +83,8 @@ KALSHI_WS_URL         = "wss://api.elections.kalshi.com/trade-api/ws/v2"
 KALSHI_BASE           = "https://api.elections.kalshi.com/trade-api/v2"
 POLYMARKET_US_GATEWAY = "https://gateway.polymarket.us"
 ARB_THRESHOLD         = 0.99  # FAKE ARB: raw price sum threshold (no fees), sanity-check mode
-KALSHI_TAKER_FEE_RATE = 0.01
-POLYMARKET_TAKER_FEE_RATE = 0.01
+KALSHI_TAKER_FEE_RATE = 0.0   # FAKE ARB: fees zeroed so threshold is raw price sum
+POLYMARKET_TAKER_FEE_RATE = 0.0
 POLY_POLL_SECONDS     = 2
 LOG_FILE              = "fake_arb_log.jsonl"
 _WS_SUBSCRIBE_CHUNK_SIZE = 50
@@ -103,6 +103,8 @@ SERIES_TO_SMT = {
     "KXNBAAST": "basketball_player_assists",
     "KXNBA3PT": "basketball_player_threes",
 }
+
+GLOBAL_MATCHERS = [cfg["matcher_cls"](arb_threshold=ARB_THRESHOLD) for cfg in SPORTS_CONFIGS]
 
 _MONEYLINE_REJECT_KEYWORDS = [
     "total", "over", "under", "o u", "spread", "run line", "runline",
@@ -643,8 +645,7 @@ def match_markets(kalshi_markets: list[dict], polymarket_markets: list[dict]) ->
             p_ask = poly_opp["ask"]
             k_fee = km["taker_fee"]
             p_fee = poly_opp["taker_fee"]
-            raw_cost = k_ask + p_ask  # FAKE ARB: compare raw prices, no fees
-            total_cost = raw_cost + k_fee + p_fee
+            total_cost = k_ask + p_ask + k_fee + p_fee  # k_fee/p_fee are 0 in fake_arb
             matches.append({
                 "market_name": km["title"],
                 "kalshi_ticker": km["ticker"],
@@ -656,9 +657,8 @@ def match_markets(kalshi_markets: list[dict], polymarket_markets: list[dict]) ->
                 "polymarket_ask": round(p_ask, 6),
                 "polymarket_taker_fee": round(p_fee, 6),
                 "total_cost": round(total_cost, 6),
-                "raw_cost": round(raw_cost, 6),
-                "gap_cents": round((ARB_THRESHOLD - raw_cost) * 100, 4),
-                "is_arb": raw_cost < ARB_THRESHOLD,
+                "gap_cents": round((ARB_THRESHOLD - total_cost) * 100, 4),
+                "is_arb": total_cost < ARB_THRESHOLD,
             })
     return matches
 
@@ -1086,8 +1086,9 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
     if not kalshi_markets:
         return
 
-    # FAKE ARB: use fee-free match_markets() so threshold is raw price sum only
-    matches = match_markets(kalshi_markets, poly_markets)
+    matches = []
+    for matcher in GLOBAL_MATCHERS:
+        matches.extend(matcher.match(kalshi_markets, poly_markets))
 
     try:
         skew = abs((datetime.fromisoformat(kalshi_updated_at) -
