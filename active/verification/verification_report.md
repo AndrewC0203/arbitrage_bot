@@ -1,39 +1,38 @@
 # Subagent Verification Report
 
-**Artifact**: scanner.py — MLB arb scanner (Kalshi + Polymarket US)
-**Date**: 2026-06-28
+**Artifact**: `evaluate_cross_market_arb` in `arb_scanner/ws_manager.py`
+**Date**: 2026-06-30
 **Rounds**: 1
 
 ## Review Verdict: FIXED
 
 ## Issues Found
 
-| # | Severity | Location | Problem | Status |
-|---|----------|----------|---------|--------|
-| 1 | critical | `fetch_polymarket()` | Still pointed at `clob.polymarket.com` — wrong endpoint, no active MLB markets | Fixed |
-| 2 | critical | `fetch_polymarket()` | HTTP errors not caught with useful context; misleading error message | Fixed |
-| 3 | major | `fetch_kalshi()` | `yes_ask` unit detection used magnitude heuristic instead of explicit field check | Fixed |
-| 4 | major | Config constants | `POLYMARKET_CLOB_BASE`, `POLYMARKET_GAMMA_BASE`, `POLYMARKET_LOOKAHEAD_DAYS` dead after CLOB removal | Fixed |
-| 5 | major | `main()` | No startup validation that credentials are non-empty | Fixed |
+| #  | Severity | Location                     | Problem                                                     | Status   |
+|----|----------|------------------------------|-------------------------------------------------------------|----------|
+| 1  | major    | `execute` condition          | `> 0.0` excluded break-even; spec says execute=False only if EV < $0 | Fixed |
+| 2  | major    | Fee rates (0.07 / 0.03)      | Differ from codebase constants (0.01) — intentional divergence undocumented | Declined (by design) |
+| 3  | major    | No hedge validation          | Prices summing >= 1.0 produce misleading positive EV        | Fixed (stderr warning) |
+| 4  | minor    | `bottleneck_size = 0`        | Zero-size trade would set execute=True after boundary fix   | Fixed (rolled into #1) |
+| 5  | minor    | `utc_now()` called twice     | Log and print timestamp could diverge under load            | Fixed |
+| 6  | minor    | Negative EV print format     | `$-0.25` looks odd; inconsistent with positive branch       | Fixed (`{:+.2f}`) |
+| 7  | nit      | Log rounding                 | Rounded values in log reduce fidelity for downstream parsers | Declined (acceptable) |
 
 ## Simplifications Applied
 
-- Removed `POLYMARKET_CLOB_BASE`, `POLYMARKET_GAMMA_BASE`, `POLYMARKET_LOOKAHEAD_DAYS` (unused after endpoint change)
-- Kept `MAX_TIMESTAMP_SKEW_SECONDS` — reviewer incorrectly flagged as unused; it is used in `main()` skew check
+None — function was appropriately scoped.
 
 ## Changes Made
 
-1. `fetch_polymarket()` rewritten to target `api.polymarket.us/v1/search?query=MLB&limit=50` with placeholder auth headers (`POLY-API-KEY`, `POLY-API-SECRET`, `POLY-API-PASSPHRASE`) and a TODO comment to replace once header names are confirmed
-2. HTTP 401 now raises a specific `RuntimeError` naming the auth failure and including response body
-3. Other HTTP errors caught via `requests.HTTPError` and re-raised with status code + body excerpt
-4. `fetch_kalshi()` now explicitly reads `yes_ask_dollars` as USD or `yes_ask` as cents — no magnitude guessing
-5. `main()` validates all three Polymarket credential env vars at startup, raises `EnvironmentError` with missing names if any are empty
-6. Removed dead constants
-
-## One Remaining Blocker
-
-`fetch_polymarket()` auth header names (`POLY-API-KEY` etc.) are placeholder — the correct names for `api.polymarket.us/v1` are not yet confirmed. The scanner will log a clear `HTTP 401` error with instructions until this is resolved.
+- `execute = net_ev > 0.0` → `execute = net_ev >= 0.0 and bottleneck_size > 0`
+- Added hedge warning: `if poly_price + kalshi_price >= 1.0: print(..., file=sys.stderr)`
+- `ts = utc_now()` hoisted above `log_event`; `"timestamp": ts` passed in; both print branches reuse `ts`
+- Print format: `ev=+${net_ev:.2f}` → `ev={net_ev:+.2f}` in both branches
 
 ## Reviewer's Summary
 
-The code had one critical structural failure (wrong API endpoint), a misleading error message, a fragile unit-detection heuristic, dead constants, and no credential validation. All have been addressed. The Kalshi side is fully functional. The Polymarket side is correctly wired to the US API but blocked on auth header name confirmation.
+The function was structurally sound but had two operationally significant issues: the `execute` boundary off-by-one, and the `utc_now()` double-call creating log-correlation drift. The fee rates (0.07/0.03) were flagged as a mismatch vs. codebase constants — this is intentional (quadratic options-style fee schedule vs. flat taker fee) and is per the user-specified requirements.
+
+## Resolver's Notes
+
+Fee rate change (Issue 2) **declined** — user explicitly specified these formulas in requirements. Nit on log rounding (Issue 7) **declined** — consistent with existing codebase behavior.

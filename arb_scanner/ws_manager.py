@@ -135,6 +135,9 @@ def evaluate_cross_market_arb(
     # Polymarket sports fee: 0.03 * size * price * (1 - price)
     bottleneck_size = min(poly_size, kalshi_size)
 
+    if poly_price + kalshi_price >= 1.0:
+        print(f"[ARB-EVAL] Warning: prices sum to {poly_price + kalshi_price:.4f} >= 1.0 — no arb possible", file=sys.stderr)
+
     kalshi_fee    = 0.07 * bottleneck_size * kalshi_price * (1 - kalshi_price)
     poly_fee      = 0.03 * bottleneck_size * poly_price   * (1 - poly_price)
     total_capital = bottleneck_size * (poly_price + kalshi_price)
@@ -142,7 +145,7 @@ def evaluate_cross_market_arb(
     payout        = bottleneck_size * 1.00
     net_ev        = payout - total_capital - total_fees
     roi           = (net_ev / (total_capital + total_fees)) * 100 if (total_capital + total_fees) > 0 else 0.0
-    execute       = net_ev > 0.0
+    execute       = net_ev >= 0.0 and bottleneck_size > 0
 
     result = {
         "bottleneck_size":        bottleneck_size,
@@ -153,9 +156,10 @@ def evaluate_cross_market_arb(
         "execute":                execute,
     }
 
+    ts = utc_now()
     log_event({
         "event":        "cross_market_arb_eval",
-        "timestamp":    utc_now(),
+        "timestamp":    ts,
         "poly_price":   poly_price,
         "poly_size":    poly_size,
         "kalshi_price": kalshi_price,
@@ -163,15 +167,14 @@ def evaluate_cross_market_arb(
         **result,
     })
 
-    ts = utc_now()
     if execute:
         print(
             f"[{ts}][ARB-EVAL] size={bottleneck_size} capital=${total_capital:.2f} "
-            f"fees=${total_fees:.2f} ev=+${net_ev:.2f} roi={roi:.1f}% EXECUTE=TRUE"
+            f"fees=${total_fees:.2f} ev={net_ev:+.2f} roi={roi:.1f}% EXECUTE=TRUE"
         )
     else:
         print(
-            f"[{ts}][ARB-EVAL] ev=${net_ev:.2f} — spread is a trap. EXECUTE=FALSE",
+            f"[{ts}][ARB-EVAL] ev={net_ev:+.2f} — spread is a trap. EXECUTE=FALSE",
             file=sys.stderr,
         )
 
