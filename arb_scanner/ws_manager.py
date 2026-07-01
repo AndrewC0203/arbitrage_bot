@@ -112,6 +112,15 @@ SERIES_TO_SMT = {
     "KXMLBHIT": "baseball_player_hits",
     "KXMLBHR":  "baseball_player_home_runs",
     "KXMLBTB":  "baseball_player_total_bases",
+    # New MLB series — title format verified via REST spot-check 2026-06-30:
+    # KXMLBKS uses "Player Name: N+" (standard format, pitchers and batters).
+    # KXMLBHRR combines hits+runs+RBIs: titles match standard regex.
+    # KXMLBOUTS: outs recorded by a pitcher; titles match standard regex.
+    # Polymarket SMT strings are inferred — if no matches appear after wiring in,
+    # the SMT value is wrong; check /v1/search results for the actual sportsMarketType.
+    "KXMLBKS":   "baseball_player_strikeouts",
+    "KXMLBHRR":  "baseball_player_hits_runs_rbis",
+    "KXMLBOUTS": "baseball_player_outs",
     "KXNBAPTS": "basketball_player_points",
     "KXNBAREB": "basketball_player_rebounds",
     "KXNBAAST": "basketball_player_assists",
@@ -418,10 +427,15 @@ class KalshiPriceCache:
         # Skip props where the game started more than 4 hours ago — those markets
         # are mid-game/finished and WS prices lag REST, producing ghost arbs.
         stale_game_cutoff = now - timedelta(hours=4)
+        # Skip entries whose price hasn't been refreshed recently — protects against
+        # "seeded via REST once, WS ticker never arrived" ghost prices.
+        stale_price_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
         return [
             e for e in self._cache.values()
             if not (e["yes_ask"] is None and e["no_ask"] is None)
             and e["game_dt_utc"] >= stale_game_cutoff
+            and e.get("updated_at") is not None
+            and e["updated_at"] >= stale_price_cutoff
         ]
 
     def today_tickers(self, today: "datetime.date") -> list[str]:
@@ -575,7 +589,7 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
                 "event_title": pp["event_title"],
                 "game_start": pp["game_start"],
                 "player_name": pp["player_name"],
-                "stat_type": smt.replace("baseball_player_", ""),
+                "stat_type": smt.replace("baseball_player_", "").replace("basketball_player_", ""),
                 "line": kp["line"],
                 "leg1": leg1_name,
                 "leg1_ask": leg1_ask,
@@ -586,10 +600,104 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
                 "kalshi_ticker": kp["ticker"],
                 "poly_smt": smt,
                 "suspicious": suspicious,
+                # Raw Poly WS prices at match time — logged for post-hoc staleness analysis
+                "poly_ws_yes_ask": pp.get("yes_ask"),
+                "poly_ws_no_ask": pp.get("no_ask"),
             })
 
     matches.sort(key=lambda x: -x["gap_cents"])
     return matches
+
+
+# ─── Kalshi REST Confirm Gate ─────────────────────────────────────────────────
+
+_KALSHI_CONFIRM_COOLDOWN_SECONDS = 5
+# keyed by (kalshi_ticker, direction); value = epoch seconds of last confirm attempt
+_kalshi_confirm_cooldown: dict[tuple, float] = {}
+
+
+async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
+    """
+    Background task: REST-confirm a new prop arb candidate against Kalshi's single-market
+    endpoint. Emits via _emit_prop_arbs if still an arb; logs ghost_rejected otherwise.
+    Must not be called inline from the WS handler — always via asyncio.create_task.
+    """
+    ticker = arb["kalshi_ticker"]
+    direction = arb["direction"]
+    url = f"{KALSHI_BASE}/markets/{ticker}"
+    ws_kalshi_ask = arb["leg1_ask"] if "Kalshi" in arb["leg1"] else arb["leg2_ask"]
+
+    try:
+        loop = asyncio.get_running_loop()
+        def _fetch():
+            resp = requests.get(url, timeout=REST_TIMEOUT)
+            resp.raise_for_status()
+            return resp.json()
+        data = await loop.run_in_executor(None, _fetch)
+        market = data.get("market", data)
+
+        # Determine confirmed Kalshi ask for the relevant side
+        if "Kalshi YES" in direction:
+            confirmed_k_ask = _kalshi_ask(market, "yes")
+        else:
+            confirmed_k_ask = _kalshi_ask(market, "no")
+
+        if confirmed_k_ask is None:
+            log_event({
+                "event": "ghost_rejected",
+                "timestamp": utc_now(),
+                "reason": "no_quote_from_rest",
+                "kalshi_ticker": ticker,
+                "direction": direction,
+                "ws_kalshi_ask": ws_kalshi_ask,
+                "rest_kalshi_ask": None,
+                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+            })
+            return
+
+        # Recompute against the same threshold match_props uses (raw ask sum vs ARB_THRESHOLD)
+        poly_ask = arb["leg2_ask"] if "Kalshi" in arb["leg1"] else arb["leg1_ask"]
+        total = confirmed_k_ask + poly_ask
+
+        if total >= ARB_THRESHOLD:
+            log_event({
+                "event": "ghost_rejected",
+                "timestamp": utc_now(),
+                "reason": "threshold_not_met_after_rest",
+                "kalshi_ticker": ticker,
+                "direction": direction,
+                "ws_kalshi_ask": ws_kalshi_ask,
+                "rest_kalshi_ask": confirmed_k_ask,
+                "ws_total": round(ws_kalshi_ask + poly_ask, 4),
+                "rest_total": round(total, 4),
+                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+            })
+            return
+
+        # Confirmed — patch in the REST-verified Kalshi ask and emit
+        confirmed_arb = dict(arb)
+        if "Kalshi" in arb["leg1"]:
+            confirmed_arb["leg1_ask"] = confirmed_k_ask
+        else:
+            confirmed_arb["leg2_ask"] = confirmed_k_ask
+        confirmed_arb["total_cost"] = round(total, 4)
+        confirmed_arb["gap_cents"] = round((ARB_THRESHOLD - total) * 100, 2)
+        _emit_prop_arbs([confirmed_arb], timestamp)
+
+    except Exception as exc:
+        log_event({
+            "event": "ghost_rejected",
+            "timestamp": utc_now(),
+            "reason": "rest_error",
+            "kalshi_ticker": ticker,
+            "direction": direction,
+            "ws_kalshi_ask": ws_kalshi_ask,
+            "error": str(exc),
+            "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+            "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+        })
 
 
 class PropArbTracker:
@@ -705,11 +813,23 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
 
     with open(LOG_FILE, "a") as f:
         for _, arb in new_or_changed:
-            f.write(json.dumps({"event": "prop_arb", "timestamp": timestamp, **arb}) + "\n")
+            f.write(json.dumps({
+                "event": "prop_arb",
+                "timestamp": timestamp,
+                **arb,
+                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+            }) + "\n")
         for rec in closed:
             arb = rec["arb"]
-            f.write(json.dumps({"event": "prop_arb_closed", "timestamp": timestamp,
-                                 "opened_at": rec["opened_at"], **arb}) + "\n")
+            f.write(json.dumps({
+                "event": "prop_arb_closed",
+                "timestamp": timestamp,
+                "opened_at": rec["opened_at"],
+                **arb,
+                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+            }) + "\n")
 
 
 # ─── REST Fetch Functions ──────────────────────────────────────────────────────
@@ -1063,6 +1183,10 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                 next_id = await _ws_subscribe_chunks(ws, ml_tickers,   "orderbook_delta", next_id)
                 next_id = await _ws_subscribe_chunks(ws, prop_tickers,  "ticker",          next_id)
 
+                # Re-pull props via REST on every (re)connect — no props equivalent of
+                # orderbook_snapshot to backfill the gap, so REST is the only catch-up.
+                asyncio.create_task(_kalshi_props_reconcile_once())
+
                 print(
                     f"[WS] Connected — {len(ml_tickers)} moneyline tickers (orderbook_delta), "
                     f"{len(prop_tickers)} prop tickers (ticker).",
@@ -1115,6 +1239,29 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                     print("[ERROR] Cannot reload Kalshi credentials for reconnect.", file=sys.stderr)
                     return
                 _, private_key = creds
+
+
+# ─── Kalshi Props Reconciliation Task ────────────────────────────────────────
+
+_KALSHI_PROPS_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
+
+async def _kalshi_props_reconcile_once() -> None:
+    """Pull Kalshi props via REST and merge into _price_cache. Non-fatal on error."""
+    loop = asyncio.get_running_loop()
+    today_utc = datetime.now(timezone.utc).date()
+    try:
+        props = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
+        _price_cache.seed_from_rest(props)
+    except Exception as exc:
+        print(f"[KALSHI-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
+
+
+async def _kalshi_props_reconciliation_task() -> None:
+    """Periodically re-pull Kalshi props via REST and merge into the price cache.
+    Doubles as a correctness check and a keep-alive that bumps updated_at."""
+    while True:
+        await asyncio.sleep(_KALSHI_PROPS_RECONCILE_INTERVAL)
+        await _kalshi_props_reconcile_once()
 
 
 # ─── Polymarket Polling Tasks ─────────────────────────────────────────────────
@@ -1494,9 +1641,26 @@ def _run_props_arb_check_from_ws() -> None:
 
     arbs = match_props(kalshi_props, poly_props)
     timestamp = now_utc.isoformat()
-    if arbs:
-        _emit_prop_arbs(arbs, timestamp)
-    else:
+    if arbs or _prop_arb_tracker.active_count():
+        now_epoch = time.time()
+        # Partition: new opens (need REST confirm) vs already-open (pass through)
+        confirmed_pass_through = []
+        for arb in arbs:
+            key = (arb["kalshi_ticker"], arb["direction"])
+            if key in _prop_arb_tracker._open:
+                # Already tracked — update/close logic handled by _emit_prop_arbs
+                confirmed_pass_through.append(arb)
+            else:
+                last_attempt = _kalshi_confirm_cooldown.get(key, 0.0)
+                if now_epoch - last_attempt < _KALSHI_CONFIRM_COOLDOWN_SECONDS:
+                    # Within cooldown — suppress; accepted false negative
+                    continue
+                _kalshi_confirm_cooldown[key] = now_epoch
+                asyncio.create_task(_rest_confirm_and_emit(arb, timestamp))
+        # Drive close detection even when confirmed_pass_through is empty — any open
+        # arb absent from confirmed_pass_through will be correctly marked closed.
+        _emit_prop_arbs(confirmed_pass_through, timestamp)
+    if not arbs:
         if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
             _last_status_log = time.time()
             ts = now_utc.strftime("%H:%M:%S")
@@ -1670,6 +1834,7 @@ async def main_ws(api_key_id: str, private_key) -> None:
     await asyncio.gather(
         _kalshi_ws_task(api_key_id, private_key),
         _poly_ws_task(),
+        _kalshi_props_reconciliation_task(),
         # _poly_ml_polling_task(),    # kept for side-by-side testing; swap with _poly_ws_task() above
         # _poly_props_polling_task(), # kept for side-by-side testing
     )
