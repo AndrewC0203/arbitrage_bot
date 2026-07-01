@@ -598,18 +598,31 @@ class OpportunityTracker:
 
 
 def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
-    poly_index: dict[tuple, dict] = {}
+    # Key on date only, keep all candidates per key: doubleheaders repeat the
+    # same (player, line, date) — the right game is picked by start time below.
+    poly_index: dict[tuple, list[dict]] = {}
     for pp in poly_props:
         game_date = pp["game_start"][:10]
         key = (pp["smt"], pp["player_norm"], pp["line"], game_date)
-        poly_index[key] = pp
+        poly_index.setdefault(key, []).append(pp)
 
     matches = []
     for kp in kalshi_props:
         smt = SERIES_TO_SMT[kp["series"]]
         game_date = kp["game_dt_utc"].strftime("%Y-%m-%d")
         key = (smt, kp["player_norm"], kp["line"], game_date)
-        pp = poly_index.get(key)
+        pp = None
+        best_diff = None
+        for cand in poly_index.get(key, []):
+            try:
+                p_dt = datetime.fromisoformat(cand["game_start"].replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            diff = abs((kp["game_dt_utc"] - p_dt).total_seconds())
+            # Same 30-min window the moneyline matcher uses (rule 5)
+            if diff <= 30 * 60 and (best_diff is None or diff < best_diff):
+                best_diff = diff
+                pp = cand
         if pp is None:
             continue
 

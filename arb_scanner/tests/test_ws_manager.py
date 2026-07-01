@@ -311,6 +311,35 @@ class TestPropsFees(unittest.TestCase):
         self.assertEqual(logged[0]["reason"], "threshold_not_met_after_rest")
 
 
+class TestDoubleheaderMatching(unittest.TestCase):
+    """Fix F: same player+line+date can occur twice (doubleheader) — the match
+    must pair markets from the same game (±30 min), like the ML matcher does."""
+
+    @staticmethod
+    def _kp(hour=17):
+        return [{"series": "KXMLBHIT", "ticker": "K-G1", "player_name": "A B",
+                 "player_norm": "a b", "line": 2, "yes_ask": 0.50, "no_ask": None,
+                 "game_dt_utc": datetime(2026, 7, 1, hour, 10, tzinfo=timezone.utc)}]
+
+    @staticmethod
+    def _pp(game_start, no_ask):
+        return {"smt": "baseball_player_hits", "player_norm": "a b", "player_name": "A B",
+                "line": 2, "yes_ask": None, "no_ask": no_ask,
+                "game_start": game_start, "event_title": "X"}
+
+    def test_matches_same_game_leg_of_doubleheader(self):
+        pps = [self._pp("2026-07-01T17:10:00Z", 0.40),   # game 1 — same game
+               self._pp("2026-07-01T23:10:00Z", 0.30)]   # game 2 — better price, wrong game
+        arbs = wm.match_props(self._kp(hour=17), pps)
+        self.assertEqual(len(arbs), 1)
+        self.assertEqual(arbs[0]["game_start"], "2026-07-01T17:10:00Z")
+
+    def test_no_match_when_game_times_differ_beyond_30min(self):
+        pps = [self._pp("2026-07-01T23:10:00Z", 0.40)]
+        arbs = wm.match_props(self._kp(hour=17), pps)
+        self.assertEqual(arbs, [])
+
+
 class TestKalshiTickTriggersPropsCheck(unittest.TestCase):
     """Fix C: a Kalshi-side price change must fire the props arb check
     immediately — not wait up to 30s for the next Poly WS (CDN) update."""
