@@ -36,3 +36,5 @@ Categories: `[STYLE]` `[CODE]` `[ARCH]` `[TOOL]` `[PROCESS]` `[DATA]` `[UX]` `[O
 13. [CODE] Never call `_emit_prop_arbs([single_arb], ...)` from a background confirm task — `PropArbTracker.update()` closes everything in `_open` not present in the passed list. Use `PropArbTracker.mark_opened()` for confirmed arbs; it inserts directly into `_open` without touching other entries.
 
 14. [PROCESS] Always verify new Kalshi prop series against live REST before wiring in: (1) fetch 5 titles via `GET /markets?series_ticker=<SERIES>` and check against `^(.+?):\s*(\d+)\+`; (2) confirm Polymarket SMT string via `/v1/search?query=mlb+will+record+at+least` before adding to `SERIES_TO_SMT`. Silent zero-match days are hard to notice — verify at the point of addition, not after merge.
+
+15. [ARCH] When two code paths produce the same log event schema, extract a shared helper rather than duplicating the format inline. Two copies of a print/log block will silently drift. Current precedent: `_print_and_log_prop_open()` is the single source of truth for `prop_arb` open events — both `_emit_prop_arbs` and `_rest_confirm_and_emit` call it.

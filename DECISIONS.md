@@ -24,7 +24,7 @@ Implemented four changes to reduce false positives from stale Kalshi `ticker` WS
 
 Polymarket-side REST confirmation is explicitly deferred — `gateway.polymarket.us/v1/markets?slug=` and `api.polymarket.us/v1/markets/{slug}/bbo` are behind Cloudflare CDN (`max-age=30`), so a confirm call within the arb window would return the same cached value as the WS event. Decision to revisit if `/v1/markets/{slug}/book` proves CDN-bypass-capable.
 
-New Kalshi series added to `SERIES_TO_SMT`: `KXMLBKS` (strikeouts), `KXMLBHRR` (hits+runs+RBIs), `KXMLBOUTS` (outs recorded). Title format spot-checked against `_kalshi_parse_title()` regex. Polymarket SMT strings are inferred (`baseball_player_strikeouts`, `baseball_player_hits_runs_rbis`, `baseball_player_outs`) — if no matches appear in production, the SMT value is wrong and needs a live `/v1/search` check.
+New Kalshi series added to `SERIES_TO_SMT`: `KXMLBKS` (strikeouts), `KXMLBHRR` (hits+runs+RBIs), `KXMLBOUTS` (outs recorded). Titles and Polymarket SMT strings both verified live before merge — see "new MLB series title + SMT verification" entry above.
 
 ## [2026-06-30] tennis tickers — switched KXATP/KXWTA to KXATPMATCH/KXWTAMATCH
 
