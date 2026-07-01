@@ -38,3 +38,9 @@ Categories: `[STYLE]` `[CODE]` `[ARCH]` `[TOOL]` `[PROCESS]` `[DATA]` `[UX]` `[O
 14. [PROCESS] Always verify new Kalshi prop series against live REST before wiring in: (1) fetch 5 titles via `GET /markets?series_ticker=<SERIES>` and check against `^(.+?):\s*(\d+)\+`; (2) confirm Polymarket SMT string via `/v1/search?query=mlb+will+record+at+least` before adding to `SERIES_TO_SMT`. Silent zero-match days are hard to notice — verify at the point of addition, not after merge.
 
 15. [ARCH] When two code paths produce the same log event schema, extract a shared helper rather than duplicating the format inline. Two copies of a print/log block will silently drift. Current precedent: `_print_and_log_prop_open()` is the single source of truth for `prop_arb` open events — both `_emit_prop_arbs` and `_rest_confirm_and_emit` call it.
+
+16. [PROCESS] Always invoke applicable superpowers skills (e.g. systematic-debugging for bug hunts) before starting a task — because the user expects the skills-first workflow and corrected the agent for skipping it.
+
+17. [DATA] Kalshi WS v2 payloads are nested under `msg` — top level carries only `type`/`sid`/`seq`. Never read `market_ticker`, prices, or book levels from the top level. Fields are dollar-strings: books arrive as `yes_dollars_fp`/`no_dollars_fp` (fractional qty strings), deltas as `price_dollars`+`delta_fp`, ticker msgs as `yes_bid_dollars`/`yes_ask_dollars`. Verified live 2026-07-01.
+
+18. [DATA] Kalshi WS orderbook `yes`/`no` arrays are resting BIDS for each side — best YES ask = 1 − max(NO bids), never min(YES levels). The `ticker` channel has no NO-side fields; derive `no_ask = 1 − yes_bid_dollars`. Verified live 2026-07-01: snapshot max(yes)=REST yes_bid, 1−max(no)=REST yes_ask.
