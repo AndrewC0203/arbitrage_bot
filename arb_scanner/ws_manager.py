@@ -415,9 +415,13 @@ class KalshiPriceCache:
         self._cache_date = today
 
     def as_props_list(self, now: datetime) -> list[dict]:
+        # Skip props where the game started more than 4 hours ago — those markets
+        # are mid-game/finished and WS prices lag REST, producing ghost arbs.
+        stale_game_cutoff = now - timedelta(hours=4)
         return [
             e for e in self._cache.values()
             if not (e["yes_ask"] is None and e["no_ask"] is None)
+            and e["game_dt_utc"] >= stale_game_cutoff
         ]
 
     def today_tickers(self, today: "datetime.date") -> list[str]:
@@ -564,6 +568,8 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
             total = leg1_ask + leg2_ask
             if total >= ARB_THRESHOLD:
                 continue
+            # Flag suspiciously deep gaps — likely ghost/stale price on one leg
+            suspicious = total < 0.80
             matches.append({
                 "direction": direction,
                 "event_title": pp["event_title"],
@@ -579,51 +585,131 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
                 "gap_cents": round((ARB_THRESHOLD - total) * 100, 2),
                 "kalshi_ticker": kp["ticker"],
                 "poly_smt": smt,
+                "suspicious": suspicious,
             })
 
     matches.sort(key=lambda x: -x["gap_cents"])
     return matches
 
 
+class PropArbTracker:
+    """
+    Tracks open prop arbs across emit calls.
+    Prints CLOSED when an arb disappears; shows still-active summary on request.
+    """
+
+    def __init__(self):
+        # key → {arb dict, opened_at, last_prices}
+        self._open: dict[tuple, dict] = {}
+
+    def _key(self, arb: dict) -> tuple:
+        return (arb["kalshi_ticker"], arb["direction"])
+
+    def update(self, arbs: list[dict], timestamp: str) -> tuple[list[dict], list[dict]]:
+        """
+        Diff current arbs against open set.
+        Returns (new_or_changed, closed) lists.
+        """
+        current_keys = {self._key(a): a for a in arbs}
+        new_or_changed = []
+        closed = []
+
+        for key, arb in current_keys.items():
+            price_sig = (arb["leg1_ask"], arb["leg2_ask"])
+            if key not in self._open:
+                self._open[key] = {"arb": arb, "opened_at": timestamp, "last_prices": price_sig}
+                new_or_changed.append(("opened", arb))
+            elif self._open[key]["last_prices"] != price_sig:
+                self._open[key]["last_prices"] = price_sig
+                self._open[key]["arb"] = arb
+                new_or_changed.append(("updated", arb))
+
+        for key in set(self._open) - set(current_keys):
+            rec = self._open.pop(key)
+            closed.append(rec)
+
+        return new_or_changed, closed
+
+    def active(self) -> list[dict]:
+        return [rec["arb"] for rec in self._open.values()]
+
+    def active_count(self) -> int:
+        return len(self._open)
+
+
+_prop_arb_tracker = PropArbTracker()
+
+
 def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
-    """Print and log prop arbs, skipping any whose prices haven't changed since last emit.
-    Evicts stale keys so an arb that disappears and returns will re-emit."""
-    active_keys = {(a["kalshi_ticker"], a["direction"]) for a in arbs}
-    for stale in set(_last_arb_prices) - active_keys:
-        del _last_arb_prices[stale]
+    """
+    Print prop arb changes (new/updated/closed) and log them.
+    Also prints a still-active summary when arbs close or prices change.
+    """
+    new_or_changed, closed = _prop_arb_tracker.update(arbs, timestamp)
 
-    new_arbs = []
-    for arb in arbs:
-        key = (arb["kalshi_ticker"], arb["direction"])
-        price_sig = (arb["leg1_ask"], arb["leg2_ask"])
-        if _last_arb_prices.get(key) == price_sig:
-            continue
-        _last_arb_prices[key] = price_sig
-        new_arbs.append(arb)
+    # Print new/updated arbs
+    if new_or_changed:
+        print(f"\n{'='*70}")
+        print(f"  PROP ARB — {timestamp}")
+        print(f"{'='*70}")
+        current_game = None
+        for status, arb in new_or_changed:
+            tag = "NEW" if status == "opened" else "UPD"
+            ghost_tag = " [GHOST?]" if arb.get("suspicious") else ""
+            if arb["event_title"] != current_game:
+                current_game = arb["event_title"]
+                print(f"\n--- {arb['event_title']} (game: {arb['game_start']}) ---")
+            print(
+                f"  [{tag}][{arb['gap_cents']:.1f}¢]{ghost_tag} {arb['player_name']} "
+                f"{arb['line']}+ {arb['stat_type']}: "
+                f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
+                f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
+                f"${arb['total_cost']:.2f}"
+            )
+            print(f"         Kalshi: {arb['kalshi_ticker']}")
 
-    if not new_arbs:
+    # Print closed arbs
+    if closed:
+        print(f"\n{'─'*70}")
+        print(f"  PROP ARB CLOSED — {timestamp}")
+        for rec in closed:
+            arb = rec["arb"]
+            duration = ""
+            try:
+                dt = (datetime.fromisoformat(timestamp) - datetime.fromisoformat(rec["opened_at"])).total_seconds()
+                duration = f" (open {int(dt)}s)"
+            except Exception:
+                pass
+            print(
+                f"  [CLOSED{duration}] {arb['player_name']} {arb['line']}+ {arb['stat_type']}: "
+                f"{arb['leg1']}={arb['leg1_ask']:.2f} + {arb['leg2']}={arb['leg2_ask']:.2f}"
+            )
+            print(f"         Kalshi: {arb['kalshi_ticker']}")
+
+        # Show what's still open after closures
+        still_active = _prop_arb_tracker.active()
+        if still_active:
+            print(f"\n  Still active ({len(still_active)}):")
+            for arb in still_active:
+                print(
+                    f"    [{arb['gap_cents']:.1f}¢] {arb['player_name']} {arb['line']}+ "
+                    f"{arb['stat_type']} — {arb['leg1']}={arb['leg1_ask']:.2f} + "
+                    f"{arb['leg2']}={arb['leg2_ask']:.2f}"
+                )
+        else:
+            print("  No prop arbs remaining.")
+        print(f"{'─'*70}")
+
+    if not new_or_changed and not closed:
         return
 
-    print(f"\n{'='*70}")
-    print(f"  PROP ARB FOUND — {timestamp}")
-    print(f"{'='*70}")
-    current_game = None
-    for arb in new_arbs:
-        if arb["event_title"] != current_game:
-            current_game = arb["event_title"]
-            print(f"\n--- {arb['event_title']} ({arb['game_start']}) ---")
-        print(
-            f"  [{arb['gap_cents']:.1f}¢] {arb['player_name']} "
-            f"{arb['line']}+ {arb['stat_type']}: "
-            f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
-            f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
-            f"${arb['total_cost']:.2f}"
-        )
-        print(f"         Kalshi: {arb['kalshi_ticker']}")
-
     with open(LOG_FILE, "a") as f:
-        for arb in new_arbs:
+        for _, arb in new_or_changed:
             f.write(json.dumps({"event": "prop_arb", "timestamp": timestamp, **arb}) + "\n")
+        for rec in closed:
+            arb = rec["arb"]
+            f.write(json.dumps({"event": "prop_arb_closed", "timestamp": timestamp,
+                                 "opened_at": rec["opened_at"], **arb}) + "\n")
 
 
 # ─── REST Fetch Functions ──────────────────────────────────────────────────────
@@ -841,7 +927,6 @@ _poly_ml_slot: dict[str, dict[str, int]] = {}
 _last_status_log: float = 0.0   # epoch seconds; status lines throttled to once per 60s
 _STATUS_LOG_INTERVAL = 60
 # keyed by (kalshi_ticker, direction); value is (leg1_ask, leg2_ask) last printed/logged
-_last_arb_prices: dict[tuple, tuple] = {}
 
 
 def _next_id() -> int:
@@ -1364,10 +1449,18 @@ def _patch_poly_ml_entry(slug: str, yes_ask: Optional[float], no_ask: Optional[f
 
 def _reconstruct_poly_props_list() -> list[dict]:
     """Build poly_props list from WS cache for match_props() consumption."""
+    now = datetime.now(timezone.utc)
+    stale_game_cutoff = now - timedelta(hours=4)
     result = []
     for entry in _poly_ws_props_token_map.values():
         if entry.get("yes_ask") is None and entry.get("no_ask") is None:
             continue
+        try:
+            game_dt = datetime.fromisoformat(entry["game_start"].replace("Z", "+00:00"))
+            if game_dt < stale_game_cutoff:
+                continue
+        except (ValueError, KeyError):
+            pass
         result.append({
             "smt": entry["smt"],
             "player_name": entry["player_name"],
