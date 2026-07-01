@@ -251,15 +251,18 @@ def _poly_ws_auth_headers() -> dict:
 
 class KalshiOrderBook:
     """
-    In-memory YES-side order book for Kalshi moneyline tickers.
-    Keyed by ticker; tracks best_ask derived from live orderbook_delta messages.
-    Only the YES side is stored — moneyline arb buys YES on Kalshi.
+    In-memory two-sided order book for Kalshi moneyline tickers.
+    Kalshi WS v2 book levels are resting BIDS per side (yes_dollars_fp /
+    no_dollars_fp as [price_dollars, qty_fp] string pairs) — the best YES ask
+    is derived as 1 - max(NO bid). Seq numbers are per WS subscription (sid),
+    not per ticker.
     """
 
     def __init__(self):
-        self._books: dict[str, dict[int, int]] = {}       # ticker → {price_cents: qty}
+        # ticker → {"yes": {price_cents: qty}, "no": {price_cents: qty}}
+        self._books: dict[str, dict[str, dict[int, float]]] = {}
         self._best_ask: dict[str, Optional[float]] = {}   # ticker → best ask USD
-        self._seq: dict[str, int] = {}                    # ticker → last seq number
+        self._sid_seq: dict[int, int] = {}                # sid → last seq seen
         self._updated_at: dict[str, datetime] = {}
         self._metadata: dict[str, dict] = {}              # ticker → {title, raw}
 
@@ -280,64 +283,81 @@ class KalshiOrderBook:
                 result.append(ticker)
         return result
 
-    def apply_snapshot(self, ticker: str, seq: int, yes_levels: list) -> None:
-        """Replace book with full snapshot from orderbook_snapshot message."""
-        if ticker not in self._metadata:
-            return
-        book: dict[int, int] = {}
-        for entry in yes_levels:
+    @staticmethod
+    def _parse_levels(levels) -> dict[int, float]:
+        """Parse [["0.5800", "608.52"], ...] dollar-string levels → {cents: qty}."""
+        book: dict[int, float] = {}
+        for entry in levels or []:
             try:
-                price, qty = int(entry[0]), int(entry[1])
-                if qty > 0:
-                    book[price] = qty
+                price = round(float(entry[0]) * 100)
+                qty = float(entry[1])
             except (IndexError, TypeError, ValueError):
                 continue
-        self._books[ticker] = book
-        self._seq[ticker] = seq
+            if qty > 0 and 0 < price < 100:
+                book[price] = qty
+        return book
+
+    def reset_connection(self) -> None:
+        """Clear per-sid seq state. Call on every (re)connect before subscribing."""
+        self._sid_seq.clear()
+
+    def apply_snapshot(self, sid: Optional[int], seq: Optional[int], payload: dict) -> None:
+        """Replace book with full snapshot from an orderbook_snapshot payload."""
+        if sid is not None and seq is not None:
+            self._sid_seq[sid] = seq  # snapshots reset the book, so gaps are moot
+        ticker = payload.get("market_ticker")
+        if not ticker or ticker not in self._metadata:
+            return
+        self._books[ticker] = {
+            "yes": self._parse_levels(payload.get("yes_dollars_fp")),
+            "no": self._parse_levels(payload.get("no_dollars_fp")),
+        }
         self._updated_at[ticker] = datetime.now(timezone.utc)
         self._recompute_best_ask(ticker)
 
-    def apply_delta(self, ticker: str, seq: int, side: str, price: int, delta: int) -> bool:
+    def apply_delta(self, sid: Optional[int], seq: Optional[int], payload: dict) -> bool:
         """
-        Apply a single orderbook_delta. Returns False if seq gap detected
-        (caller should resubscribe to get a fresh snapshot).
-        Only processes the YES side.
+        Apply a single orderbook_delta payload. Returns False on a seq gap —
+        the caller must reconnect for fresh snapshots (a gap on a sid stream
+        invalidates every book on that stream, not just this ticker's).
         """
-        if ticker not in self._metadata:
+        if sid is not None and seq is not None:
+            last = self._sid_seq.get(sid)
+            if last is not None and seq != last + 1:
+                return False
+            self._sid_seq[sid] = seq
+
+        ticker = payload.get("market_ticker")
+        if not ticker or ticker not in self._metadata:
             return True  # unknown ticker, silently skip
 
-        # Seq gap check — only enforce after we have a baseline
-        if ticker in self._seq and seq != self._seq[ticker] + 1:
-            return False
-
-        if side != "yes":
-            # Track seq even for NO-side deltas so we don't false-gap later
-            if ticker in self._seq:
-                self._seq[ticker] = seq
+        side = payload.get("side")
+        if side not in ("yes", "no"):
             return True
-
-        book = self._books.setdefault(ticker, {})
         try:
-            price_int = int(price)
-            delta_int = int(delta)
+            price = round(float(payload.get("price_dollars")) * 100)
+            delta = float(payload.get("delta_fp"))
         except (TypeError, ValueError):
             return True
+        if not 0 < price < 100:
+            return True
 
-        new_qty = book.get(price_int, 0) + delta_int
+        book = self._books.setdefault(ticker, {"yes": {}, "no": {}})[side]
+        new_qty = book.get(price, 0.0) + delta
         if new_qty <= 0:
-            book.pop(price_int, None)
+            book.pop(price, None)
         else:
-            book[price_int] = new_qty
+            book[price] = new_qty
 
-        self._seq[ticker] = seq
         self._updated_at[ticker] = datetime.now(timezone.utc)
         self._recompute_best_ask(ticker)
         return True
 
     def _recompute_best_ask(self, ticker: str) -> None:
-        book = self._books.get(ticker, {})
-        positive = [p for p, q in book.items() if q > 0]
-        self._best_ask[ticker] = min(positive) / 100.0 if positive else None
+        # Book sides are resting bids: best YES ask = 1 - best NO bid.
+        no_bids = self._books.get(ticker, {}).get("no", {})
+        positive = [p for p, q in no_bids.items() if q > 0]
+        self._best_ask[ticker] = (100 - max(positive)) / 100.0 if positive else None
 
     def as_kalshi_markets(self, now: datetime) -> list[dict]:
         """Return normalized market dicts in the format matcher.match() expects."""
@@ -372,19 +392,33 @@ class KalshiPriceCache:
         self._cache: dict[str, dict] = {}
         self._cache_date: Optional["datetime.date"] = None
 
-    def update_from_ws(self, ticker: str, msg: dict) -> None:
-        raw_yes = msg["yes_ask"] if "yes_ask" in msg else msg.get("yes_ask_dollars")
-        raw_no  = msg["no_ask"]  if "no_ask"  in msg else msg.get("no_ask_dollars")
-        yes_ask = self._parse_price(raw_yes)
-        no_ask  = self._parse_price(raw_no)
+    def update_from_ws(self, ticker: str, msg: dict) -> bool:
+        """
+        Apply a ticker-channel payload (the "msg" object, already unwrapped).
+        Real feed carries yes_bid_dollars / yes_ask_dollars only — there is no
+        NO-side field, so no_ask is derived as 1 - yes_bid. A present-but-
+        unusable price (0 or ≥1) means "no live quote" and clears the side
+        rather than preserving a stale price. Returns True if entry changed.
+        """
         if ticker not in self._cache:
-            return
+            return False
         entry = self._cache[ticker]
-        if yes_ask is not None:
-            entry["yes_ask"] = yes_ask
-        if no_ask is not None:
-            entry["no_ask"] = no_ask
-        entry["updated_at"] = datetime.now(timezone.utc)
+        touched = False
+
+        raw_yes_ask = msg.get("yes_ask_dollars", msg.get("yes_ask"))
+        if raw_yes_ask is not None:
+            entry["yes_ask"] = self._parse_price(raw_yes_ask)
+            touched = True
+
+        raw_yes_bid = msg.get("yes_bid_dollars", msg.get("yes_bid"))
+        if raw_yes_bid is not None:
+            yes_bid = self._parse_price(raw_yes_bid)
+            entry["no_ask"] = round(1.0 - yes_bid, 4) if yes_bid is not None else None
+            touched = True
+
+        if touched:
+            entry["updated_at"] = datetime.now(timezone.utc)
+        return touched
 
     def seed_from_rest(self, props: list[dict]) -> None:
         self.purge_old_date(datetime.now(timezone.utc).date())
@@ -1160,33 +1194,34 @@ async def _ws_subscribe_chunks(ws, tickers: list[str], channel: str, start_id: i
 
 def _handle_ws_message(data: dict) -> bool:
     """
-    Dispatch a single WS message. Returns True if the caller should resubscribe
-    that ticker (sequence gap on orderbook_delta).
+    Dispatch a single WS message. Returns True if the caller should reconnect
+    (sequence gap on an orderbook_delta sid stream).
+    Kalshi WS v2 nests the payload under "msg"; only type/sid/seq live at the
+    top level (LEARNED_RULES.md rule 17).
     """
     msg_type = data.get("type")
-    ticker   = data.get("market_ticker")
+    payload  = data.get("msg") or {}
+    ticker   = payload.get("market_ticker")
+    sid      = data.get("sid")
+    seq      = data.get("seq")
 
     if msg_type == "orderbook_snapshot":
         if ticker:
-            _order_book.apply_snapshot(ticker, data.get("seq", 0), data.get("yes", []))
+            _order_book.apply_snapshot(sid, seq, payload)
+            check_arb_moneyline(utc_now())
 
     elif msg_type == "orderbook_delta":
         if ticker:
-            ok = _order_book.apply_delta(
-                ticker,
-                data.get("seq"),
-                data.get("side", ""),
-                data.get("price"),
-                data.get("delta"),
-            )
+            ok = _order_book.apply_delta(sid, seq, payload)
             if not ok:
                 return True
             check_arb_moneyline(utc_now())
 
     elif msg_type == "ticker":
-        # Props price update — cache only; arb checked in _poly_props_polling_task
+        # Props price update — arb check fires immediately on any change
         if ticker:
-            _price_cache.update_from_ws(ticker, data)
+            if _price_cache.update_from_ws(ticker, payload):
+                _run_props_arb_check_from_ws()
 
     elif msg_type == "subscribed":
         pass
