@@ -1218,9 +1218,11 @@ def _handle_ws_message(data: dict) -> bool:
             check_arb_moneyline(utc_now())
 
     elif msg_type == "ticker":
-        # Props price update — cache only; arb checked on Poly WS updates
+        # Props price update — fire the arb check immediately on any change
+        # instead of waiting up to 30s for the next Poly WS (CDN) update.
         if ticker:
-            _price_cache.update_from_ws(ticker, payload)
+            if _price_cache.update_from_ws(ticker, payload):
+                _run_props_arb_check_from_ws()
 
     elif msg_type == "subscribed":
         pass

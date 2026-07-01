@@ -15,6 +15,7 @@ Run: python -m pytest tests/test_ws_manager.py -v
 
 import unittest
 from datetime import datetime, timezone, timedelta
+from unittest.mock import patch
 
 import ws_manager as wm
 from ws_manager import KalshiOrderBook, KalshiPriceCache
@@ -163,6 +164,29 @@ class TestWsTickerPriceCache(unittest.TestCase):
         before = wm._price_cache._cache[PROP_TICKER]["updated_at"]
         wm._handle_ws_message(_ticker_msg())
         self.assertGreater(wm._price_cache._cache[PROP_TICKER]["updated_at"], before)
+
+
+class TestKalshiTickTriggersPropsCheck(unittest.TestCase):
+    """Fix C: a Kalshi-side price change must fire the props arb check
+    immediately — not wait up to 30s for the next Poly WS (CDN) update."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._price_cache = KalshiPriceCache()
+        wm._poly_ml_cache = None
+
+    def test_ticker_price_change_triggers_props_arb_check(self):
+        wm._price_cache._cache[PROP_TICKER] = _cache_entry()
+        calls = []
+        with patch.object(wm, "_run_props_arb_check_from_ws", lambda: calls.append(1)):
+            wm._handle_ws_message(_ticker_msg())
+        self.assertEqual(len(calls), 1)
+
+    def test_ticker_for_unknown_market_does_not_trigger_check(self):
+        calls = []
+        with patch.object(wm, "_run_props_arb_check_from_ws", lambda: calls.append(1)):
+            wm._handle_ws_message(_ticker_msg(ticker="KXMLBHIT-UNKNOWN-1"))
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
