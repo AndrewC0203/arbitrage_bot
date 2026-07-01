@@ -1155,6 +1155,32 @@ _msg_id_iter  = itertools.count(1)
 _poly_ws_ml_token_map:    dict[str, dict] = {}
 _poly_ws_props_token_map: dict[str, dict] = {}
 _poly_ws_lock = asyncio.Lock()
+
+# REST endpoints sit behind a CDN with max-age=30, so a REST quote can be up to
+# 30s old. The WS is event-driven (silence = price unchanged), so any entry the
+# WS touched within this window is at least as fresh as REST.
+_POLY_WS_FRESH_SECONDS = 30
+
+
+def _carry_ws_fresh_prices(old: Optional[dict], new: dict, now: datetime) -> dict:
+    """Keep `old`'s WS prices in `new` if the WS touched them within
+    _POLY_WS_FRESH_SECONDS. `ws_at` is stamped only by the WS handler, never by
+    REST re-seeds, so it is a reliable provenance marker."""
+    if old is not None:
+        ws_at = old.get("ws_at")
+        if ws_at is not None and (now - ws_at).total_seconds() < _POLY_WS_FRESH_SECONDS:
+            new["yes_ask"] = old.get("yes_ask")
+            new["no_ask"] = old.get("no_ask")
+            new["ws_at"] = ws_at
+    return new
+
+
+def _poly_unsubscribed_slugs(subscribed: set[str]) -> list[str]:
+    """Slugs present in either WS map but not yet subscribed on the live connection."""
+    return [
+        s for s in itertools.chain(_poly_ws_ml_token_map, _poly_ws_props_token_map)
+        if s not in subscribed
+    ]
 # Incremental-update index: slug → {"yes": list_idx, "no": list_idx}
 # Built by _rebuild_poly_ml_cache(); patched in O(1) by _patch_poly_ml_entry()
 _poly_ml_slot: dict[str, dict[str, int]] = {}
@@ -1516,18 +1542,22 @@ async def _seed_one_ml_league(
                             no_abbr = abbr
                             no_name = display
 
-                    _poly_ws_ml_token_map[slug_m] = {
-                        "slug": slug_m,
-                        "title": m.get("question") or slug_m,
-                        "yes_abbr": yes_abbr,
-                        "no_abbr": no_abbr,
-                        "yes_name": yes_name,
-                        "no_name": no_name,
-                        "yes_ask": yes_ask,
-                        "no_ask": no_ask,
-                        "raw": m,
-                        "updated_at": now,
-                    }
+                    _poly_ws_ml_token_map[slug_m] = _carry_ws_fresh_prices(
+                        _poly_ws_ml_token_map.get(slug_m),
+                        {
+                            "slug": slug_m,
+                            "title": m.get("question") or slug_m,
+                            "yes_abbr": yes_abbr,
+                            "no_abbr": no_abbr,
+                            "yes_name": yes_name,
+                            "no_name": no_name,
+                            "yes_ask": yes_ask,
+                            "no_ask": no_ask,
+                            "raw": m,
+                            "updated_at": now,
+                        },
+                        now,
+                    )
                     slugs.append(slug_m)
                 except (TypeError, ValueError, KeyError):
                     continue
@@ -1596,18 +1626,22 @@ def _update_poly_props_map(events: list) -> list[str]:
                         yes_ask = ask
                     elif side.get("long") is False:
                         no_ask = ask
-                _poly_ws_props_token_map[slug] = {
-                    "slug": slug,
-                    "smt": smt,
-                    "player_name": player_name,
-                    "player_norm": normalize_name(player_name),
-                    "line": m.get("line"),
-                    "game_start": game_start,
-                    "event_title": event_title,
-                    "yes_ask": yes_ask,
-                    "no_ask": no_ask,
-                    "updated_at": now,
-                }
+                _poly_ws_props_token_map[slug] = _carry_ws_fresh_prices(
+                    _poly_ws_props_token_map.get(slug),
+                    {
+                        "slug": slug,
+                        "smt": smt,
+                        "player_name": player_name,
+                        "player_norm": normalize_name(player_name),
+                        "line": m.get("line"),
+                        "game_start": game_start,
+                        "event_title": event_title,
+                        "yes_ask": yes_ask,
+                        "no_ask": no_ask,
+                        "updated_at": now,
+                    },
+                    now,
+                )
                 kept.append(slug)
             except (TypeError, ValueError, KeyError):
                 continue
@@ -1870,6 +1904,7 @@ async def _handle_poly_ws_message(data: dict) -> None:
                 if no_ask is not None:
                     entry["no_ask"] = no_ask
                 entry["updated_at"] = now
+                entry["ws_at"] = now
                 _patch_poly_ml_entry(slug, yes_ask, no_ask)
                 is_ml = True
             elif slug in _poly_ws_props_token_map:
@@ -1879,6 +1914,7 @@ async def _handle_poly_ws_message(data: dict) -> None:
                 if no_ask is not None:
                     entry["no_ask"] = no_ask
                 entry["updated_at"] = now
+                entry["ws_at"] = now
                 is_props = True
 
         if is_ml:
