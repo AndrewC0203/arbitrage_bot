@@ -1218,10 +1218,9 @@ def _handle_ws_message(data: dict) -> bool:
             check_arb_moneyline(utc_now())
 
     elif msg_type == "ticker":
-        # Props price update — arb check fires immediately on any change
+        # Props price update — cache only; arb checked on Poly WS updates
         if ticker:
-            if _price_cache.update_from_ws(ticker, payload):
-                _run_props_arb_check_from_ws()
+            _price_cache.update_from_ws(ticker, payload)
 
     elif msg_type == "subscribed":
         pass
@@ -1248,6 +1247,7 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                 backoff = 1
 
                 today = datetime.now(timezone.utc).date()
+                _order_book.reset_connection()
                 ml_tickers   = _order_book.today_tickers(today)
                 prop_tickers = _price_cache.today_tickers(today)
 
@@ -1274,14 +1274,9 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                     needs_resub = _handle_ws_message(data)
 
                     if needs_resub:
-                        bad_ticker = data.get("market_ticker")
-                        if bad_ticker:
-                            resub_id = _next_id() + 10000
-                            await ws.send(json.dumps({
-                                "id": resub_id,
-                                "cmd": "subscribe",
-                                "params": {"channels": ["orderbook_delta"], "market_tickers": [bad_ticker]},
-                            }))
+                        # A seq gap invalidates every book on that sid stream;
+                        # reconnect to get fresh snapshots for all tickers.
+                        raise RuntimeError("orderbook seq gap — reconnecting for fresh snapshots")
 
                     # Date rollover: resubscribe to next day's tickers
                     new_today = datetime.now(timezone.utc).date()
