@@ -998,5 +998,176 @@ class TestPropArbTracker(unittest.TestCase):
         assert self.tracker.active_count() == 1
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DOMAIN 8 — Poly WS freshness guard + delta resubscribe
+# REST re-seeds are CDN-cached (max-age=30) and must not clobber prices the WS
+# touched more recently; new slugs discovered mid-connection must be reported
+# for delta subscription.
+
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+import ws_manager as wm
+from ws_manager import (
+    _carry_ws_fresh_prices,
+    _poly_unsubscribed_slugs,
+    _update_poly_props_map,
+)
+
+
+def _props_search_event(slug, player, yes_ask, no_ask, game_start, active=True, closed=False):
+    return {
+        "title": "MLB props",
+        "markets": [{
+            "sportsMarketType": "baseball_player_hits",
+            "slug": slug,
+            "gameStartTime": game_start,
+            "active": active,
+            "closed": closed,
+            "archived": False,
+            "line": 1.5,
+            "metadata": {"playerName": player},
+            "marketSides": [
+                {"long": True, "quote": {"value": str(yes_ask)}},
+                {"long": False, "quote": {"value": str(no_ask)}},
+            ],
+        }],
+    }
+
+
+class TestCarryWsFreshPrices(unittest.TestCase):
+    """_carry_ws_fresh_prices: REST entry keeps WS prices iff WS touched them recently."""
+
+    def setUp(self):
+        self.now = datetime(2026, 7, 1, 23, 0, 0, tzinfo=timezone.utc)
+        self.new = {"yes_ask": 0.60, "no_ask": 0.45}
+
+    def test_FG01_ws_fresh_prices_carried(self):
+        old = {"yes_ask": 0.55, "no_ask": 0.50, "ws_at": self.now - timedelta(seconds=5)}
+        merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.55
+        assert merged["no_ask"] == 0.50
+
+    def test_FG02_ws_stale_rest_wins(self):
+        old = {"yes_ask": 0.55, "no_ask": 0.50, "ws_at": self.now - timedelta(seconds=60)}
+        merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.60
+        assert merged["no_ask"] == 0.45
+
+    def test_FG03_no_old_entry_rest_wins(self):
+        merged = _carry_ws_fresh_prices(None, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.60
+
+    def test_FG04_old_entry_never_ws_touched_rest_wins(self):
+        old = {"yes_ask": 0.55, "no_ask": 0.50}
+        merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.60
+
+
+class TestPropsMapFreshnessGuard(unittest.TestCase):
+    """_update_poly_props_map must respect the WS freshness guard and still evict."""
+
+    def setUp(self):
+        self._saved = dict(wm._poly_ws_props_token_map)
+        wm._poly_ws_props_token_map.clear()
+        now = datetime.now(timezone.utc)
+        self.game_start = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.slug = "hit-mlb-test-player-2026-07-01"
+
+    def tearDown(self):
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_props_token_map.update(self._saved)
+
+    def _seed_entry(self, ws_at):
+        wm._poly_ws_props_token_map[self.slug] = {
+            "slug": self.slug, "smt": "baseball_player_hits",
+            "player_name": "Test Player", "player_norm": "test player",
+            "line": 1.5, "game_start": self.game_start, "event_title": "MLB props",
+            "yes_ask": 0.30, "no_ask": 0.75,
+            "updated_at": datetime.now(timezone.utc), "ws_at": ws_at,
+        }
+
+    def test_FG05_ws_fresh_entry_keeps_ws_prices_on_rest_reseed(self):
+        self._seed_entry(ws_at=datetime.now(timezone.utc) - timedelta(seconds=3))
+        events = [_props_search_event(self.slug, "Test Player", 0.50, 0.55, self.game_start)]
+        kept = _update_poly_props_map(events)
+        assert self.slug in kept
+        entry = wm._poly_ws_props_token_map[self.slug]
+        assert entry["yes_ask"] == 0.30
+        assert entry["no_ask"] == 0.75
+
+    def test_FG06_ws_stale_entry_takes_rest_prices(self):
+        self._seed_entry(ws_at=datetime.now(timezone.utc) - timedelta(seconds=120))
+        events = [_props_search_event(self.slug, "Test Player", 0.50, 0.55, self.game_start)]
+        _update_poly_props_map(events)
+        entry = wm._poly_ws_props_token_map[self.slug]
+        assert entry["yes_ask"] == 0.50
+        assert entry["no_ask"] == 0.55
+
+    def test_FG07_dead_market_evicted_even_if_ws_fresh(self):
+        self._seed_entry(ws_at=datetime.now(timezone.utc))
+        events = [_props_search_event(self.slug, "Test Player", 0.50, 0.55,
+                                      self.game_start, closed=True)]
+        _update_poly_props_map(events)
+        assert self.slug not in wm._poly_ws_props_token_map
+
+
+class TestPolyWsMessageSetsWsAt(unittest.TestCase):
+    """WS lite messages must stamp ws_at so REST re-seeds can detect WS freshness."""
+
+    def setUp(self):
+        self._saved = dict(wm._poly_ws_props_token_map)
+        wm._poly_ws_props_token_map.clear()
+        self.slug = "hit-mlb-wsat-player-2026-07-01"
+        wm._poly_ws_props_token_map[self.slug] = {
+            "slug": self.slug, "smt": "baseball_player_hits",
+            "player_name": "Wsat Player", "player_norm": "wsat player",
+            "line": 1.5, "game_start": "2026-07-01T23:00:00Z", "event_title": "MLB props",
+            "yes_ask": None, "no_ask": None,
+            "updated_at": datetime.now(timezone.utc),
+        }
+
+    def tearDown(self):
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_props_token_map.update(self._saved)
+
+    def test_FG08_lite_message_sets_ws_at_and_prices(self):
+        msg = {"requestId": "r1", "marketDataLite": {
+            "marketSlug": self.slug,
+            "bestBid": {"value": "0.40"}, "bestAsk": {"value": "0.44"},
+        }}
+        asyncio.run(wm._handle_poly_ws_message(msg))
+        entry = wm._poly_ws_props_token_map[self.slug]
+        assert entry["yes_ask"] == 0.44
+        assert entry["no_ask"] == 0.60
+        assert isinstance(entry.get("ws_at"), datetime)
+
+
+class TestPolyUnsubscribedSlugs(unittest.TestCase):
+    """_poly_unsubscribed_slugs: slugs in either WS map missing from the live subscription."""
+
+    def setUp(self):
+        self._saved_ml = dict(wm._poly_ws_ml_token_map)
+        self._saved_props = dict(wm._poly_ws_props_token_map)
+        wm._poly_ws_ml_token_map.clear()
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_ml_token_map["ml-a"] = {"slug": "ml-a"}
+        wm._poly_ws_ml_token_map["ml-b"] = {"slug": "ml-b"}
+        wm._poly_ws_props_token_map["prop-a"] = {"slug": "prop-a"}
+
+    def tearDown(self):
+        wm._poly_ws_ml_token_map.clear()
+        wm._poly_ws_ml_token_map.update(self._saved_ml)
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_props_token_map.update(self._saved_props)
+
+    def test_DS01_all_subscribed_returns_empty(self):
+        assert _poly_unsubscribed_slugs({"ml-a", "ml-b", "prop-a"}) == []
+
+    def test_DS02_new_slugs_in_both_maps_returned(self):
+        new = _poly_unsubscribed_slugs({"ml-a"})
+        assert sorted(new) == ["ml-b", "prop-a"]
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
