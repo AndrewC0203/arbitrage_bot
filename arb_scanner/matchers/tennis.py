@@ -134,20 +134,6 @@ def _names_match(subject: str, pm_name: str) -> bool:
 
 
 class TennisMatcher(BaseMatcher):
-    API_MAPPING = {
-        "kalshi": {
-            "endpoint": "https://api.elections.kalshi.com/trade-api/v2/markets",
-            "series_tickers": ["KXATPMATCH", "KXWTAMATCH"],
-            "data_fields": {"market_ticker": "ticker", "player_name": "title (subject of 'Will X win...')", "ask_price": "yes_ask_dollars"},
-        },
-        "polymarket": {
-            "endpoint": "https://gateway.polymarket.us/v2/leagues/atp/events",
-            "league_slugs": ["atp", "wta"],
-            "sports_market_type": "tennis_match_winner",
-            "data_fields": {"market_slug": "slug", "player_name": "marketSides[].team.displayName", "ask_price": "marketSides[].quote.value"},
-        },
-    }
-
     def __init__(self, arb_threshold: float = 0.96):
         self.arb_threshold = arb_threshold
 

@@ -14,12 +14,15 @@ Run: python -m pytest test_scanner.py -v
 
 import time
 import unittest
+from unittest.mock import patch
 
 from ws_manager import (
     ARB_THRESHOLD,
     KALSHI_TAKER_FEE_RATE,
     POLYMARKET_TAKER_FEE_RATE,
     OpportunityTracker,
+    PropArbTracker,
+    _print_and_log_prop_open,
     kalshi_is_moneyline,
     normalize_name,
     team_code,
@@ -39,15 +42,32 @@ def match_markets(kalshi_markets, polymarket_markets):
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+# Fixed game datetime used across matching tests: 2026-06-29 19:00 ET = 23:00 UTC
+_GAME_START_UTC = "2026-06-29T23:00:00Z"
+# Ticker segment for that datetime (ET): 26JUN291900
+_GAME_SEGMENT = "26JUN291900"
+
+
 def _kalshi_market(ticker, title, ask):
+    """Build a Kalshi market dict. ticker should use realistic format: KXMLBGAME-{DATE}-{TEAM}."""
     fee = round(ask * KALSHI_TAKER_FEE_RATE, 6)
-    return {"ticker": ticker, "title": title, "ask": ask, "taker_fee": fee, "raw": {}}
+    return {"ticker": ticker, "title": title, "ask": ask, "taker_fee": fee,
+            "raw": {"title": title}}
 
 
-def _poly_market(slug, question, ask):
+def _poly_market(slug, question, ask, team_abbr, game_start=_GAME_START_UTC):
+    """Build a Polymarket market dict in live format (with team_abbr and gameStartTime)."""
     fee = round(ask * POLYMARKET_TAKER_FEE_RATE, 6)
-    # No team_abbr: keeps BaseballMatcher in test-mode (title-based frozenset matching)
-    return {"slug": slug, "title": question, "ask": ask, "taker_fee": fee, "raw": {}}
+    return {"slug": slug, "title": question, "ask": ask, "taker_fee": fee,
+            "team_abbr": team_abbr, "raw": {"gameStartTime": game_start}}
+
+
+def _poly_game_pair(slug, question, ask_a, team_a, ask_b, team_b, game_start=_GAME_START_UTC):
+    """Return both sides of a Polymarket game (live code needs both sides in the list)."""
+    return [
+        _poly_market(slug, question, ask_a, team_a, game_start),
+        _poly_market(slug, question, ask_b, team_b, game_start),
+    ]
 
 
 def _tracker_process(tracker, matches, k_ts="2026-01-01T00:00:00+00:00",
@@ -780,8 +800,8 @@ class TestArbThresholdFormula(unittest.TestCase):
 
     def test_AT12_match_markets_computes_is_arb_correctly(self):
         # Integration: match_markets uses correct formula
-        km = [_kalshi_market("KXMLBGAME-NYYBOS", "Yankees vs Red Sox", 0.45)]
-        pm = [_poly_market("nyy-vs-bos", "Yankees vs Red Sox", 0.45)]
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "Yankees vs Red Sox", 0.45)]
+        pm = _poly_game_pair("nyy-vs-bos", "Yankees vs Red Sox", 0.45, "bos", 0.45, "nyy")
         results = match_markets(km, pm)
         assert len(results) == 1
         r = results[0]
@@ -790,8 +810,8 @@ class TestArbThresholdFormula(unittest.TestCase):
         assert r["is_arb"] == (expected_total < ARB_THRESHOLD)
 
     def test_AT13_match_markets_no_arb_marked_correctly(self):
-        km = [_kalshi_market("KXMLBGAME-NYYBOS", "Yankees vs Red Sox", 0.50)]
-        pm = [_poly_market("nyy-vs-bos", "Yankees vs Red Sox", 0.50)]
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "Yankees vs Red Sox", 0.50)]
+        pm = _poly_game_pair("nyy-vs-bos", "Yankees vs Red Sox", 0.50, "bos", 0.50, "nyy")
         results = match_markets(km, pm)
         assert len(results) == 1
         assert results[0]["is_arb"] is False
@@ -802,41 +822,41 @@ class TestArbThresholdFormula(unittest.TestCase):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestMatchMarkets(unittest.TestCase):
-    """TC-MM-*: match_markets pairs markets by team frozenset, order-independent."""
+    """TC-MM-*: match_markets pairs Kalshi and Polymarket markets by team and game time."""
 
     def test_MM01_exact_title_match(self):
-        km = [_kalshi_market("KXMLBGAME-NYYBOS", "Yankees vs Red Sox", 0.45)]
-        pm = [_poly_market("nyy-vs-bos", "Yankees vs Red Sox game winner", 0.45)]
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "Yankees vs Red Sox", 0.45)]
+        pm = _poly_game_pair("nyy-vs-bos", "Yankees vs Red Sox game winner", 0.45, "bos", 0.45, "nyy")
         results = match_markets(km, pm)
         assert len(results) == 1
 
     def test_MM02_reversed_order_still_matches(self):
-        # Kalshi: "Yankees vs Red Sox", Poly: "Red Sox vs Yankees"
-        km = [_kalshi_market("KXMLBGAME-NYYBOS", "Yankees vs Red Sox", 0.45)]
-        pm = [_poly_market("bos-vs-nyy", "Red Sox vs Yankees", 0.45)]
+        # Kalshi: "Yankees vs Red Sox" with k_team=NYY; Poly opponent side is BOS
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "Yankees vs Red Sox", 0.45)]
+        pm = _poly_game_pair("nyy-vs-bos", "Red Sox vs Yankees", 0.45, "bos", 0.45, "nyy")
         results = match_markets(km, pm)
         assert len(results) == 1
 
     def test_MM03_different_name_forms_match(self):
-        # Kalshi uses city names, Poly uses nicknames
-        km = [_kalshi_market("KXMLBGAME-NYYBOS", "New York Yankees vs Boston Red Sox", 0.45)]
-        pm = [_poly_market("nyy-vs-bos", "Yankees vs Red Sox game winner", 0.45)]
+        # Kalshi uses city names, Poly uses nicknames — team_abbr drives matching
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "New York Yankees vs Boston Red Sox", 0.45)]
+        pm = _poly_game_pair("nyy-vs-bos", "Yankees vs Red Sox game winner", 0.45, "bos", 0.45, "nyy")
         results = match_markets(km, pm)
         assert len(results) == 1
 
     def test_MM04_no_match_different_teams(self):
-        km = [_kalshi_market("KXMLBGAME-NYYBOS", "Yankees vs Red Sox", 0.45)]
-        pm = [_poly_market("hou-vs-atl", "Astros vs Braves", 0.45)]
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "Yankees vs Red Sox", 0.45)]
+        pm = _poly_game_pair("hou-vs-atl", "Astros vs Braves", 0.45, "atl", 0.45, "hou")
         results = match_markets(km, pm)
         assert len(results) == 0
 
     def test_MM05_empty_kalshi_returns_empty(self):
-        pm = [_poly_market("nyy-vs-bos", "Yankees vs Red Sox", 0.45)]
+        pm = _poly_game_pair("nyy-vs-bos", "Yankees vs Red Sox", 0.45, "bos", 0.45, "nyy")
         results = match_markets([], pm)
         assert results == []
 
     def test_MM06_empty_polymarket_returns_empty(self):
-        km = [_kalshi_market("KXMLBGAME-NYYBOS", "Yankees vs Red Sox", 0.45)]
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "Yankees vs Red Sox", 0.45)]
         results = match_markets(km, [])
         assert results == []
 
@@ -844,23 +864,138 @@ class TestMatchMarkets(unittest.TestCase):
         assert match_markets([], []) == []
 
     def test_MM08_unrecognized_kalshi_title_skipped(self):
-        km = [_kalshi_market("KXMLBGAME-XX", "Random Game Title", 0.45)]
-        pm = [_poly_market("nyy-vs-bos", "Yankees vs Red Sox", 0.45)]
+        # Ticker with unparseable date segment → _kalshi_game_dt_utc returns None → skipped
+        km = [_kalshi_market("KXMLBGAME-BADDATE-NYY", "Random Game Title", 0.45)]
+        pm = _poly_game_pair("nyy-vs-bos", "Yankees vs Red Sox", 0.45, "bos", 0.45, "nyy")
         results = match_markets(km, pm)
         assert len(results) == 0
 
     def test_MM09_market_name_comes_from_kalshi_title(self):
         # market_name in the match result comes from the Kalshi title, not Polymarket
-        km = [_kalshi_market("KXMLBGAME-NYYBOS", "Yankees vs Red Sox", 0.45)]
-        pm = [_poly_market("nyy-vs-bos", "Yankees vs Red Sox", 0.45)]
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "Yankees vs Red Sox", 0.45)]
+        pm = _poly_game_pair("nyy-vs-bos", "Yankees vs Red Sox", 0.45, "bos", 0.45, "nyy")
         results = match_markets(km, pm)
         assert len(results) == 1
         assert results[0]["market_name"] == "Yankees vs Red Sox"
 
-    def test_MM10_frozenset_key_is_order_independent(self):
-        k1 = frozenset({"nyy", "bos"})
-        k2 = frozenset({"bos", "nyy"})
-        assert k1 == k2
+    def test_MM10_game_time_mismatch_skipped(self):
+        # Poly game is 2 hours later than Kalshi → outside 30-min window → no match
+        km = [_kalshi_market(f"KXMLBGAME-{_GAME_SEGMENT}-NYY", "Yankees vs Red Sox", 0.45)]
+        late_start = "2026-06-30T01:00:00Z"  # 2h after _GAME_START_UTC
+        pm = _poly_game_pair("nyy-vs-bos", "Yankees vs Red Sox", 0.45, "bos", 0.45, "nyy",
+                             game_start=late_start)
+        results = match_markets(km, pm)
+        assert len(results) == 0
+
+
+# ─── Domain 7 — PropArbTracker lifecycle ─────────────────────────────────────
+
+def _prop_arb(ticker, direction, leg1_ask=0.45, leg2_ask=0.46):
+    return {
+        "kalshi_ticker": ticker,
+        "direction": direction,
+        "leg1": "Kalshi YES" if "Kalshi YES" in direction else "Poly YES",
+        "leg1_ask": leg1_ask,
+        "leg2": "Poly NO" if "Kalshi YES" in direction else "Kalshi NO",
+        "leg2_ask": leg2_ask,
+        "total_cost": round(leg1_ask + leg2_ask, 4),
+        "gap_cents": round((0.96 - leg1_ask - leg2_ask) * 100, 2),
+        "player_name": "Test Player",
+        "stat_type": "hits",
+        "line": 1,
+        "event_title": "Game A",
+        "game_start": "2026-06-30T23:00:00Z",
+        "poly_smt": "baseball_player_hits",
+        "suspicious": False,
+        "poly_ws_yes_ask": 0.45,
+        "poly_ws_no_ask": 0.46,
+    }
+
+
+class TestPropArbTracker(unittest.TestCase):
+    """Domain 7 — PropArbTracker lifecycle and mark_opened isolation."""
+
+    def setUp(self):
+        self.tracker = PropArbTracker()
+        self.ts = "2026-06-30T12:00:00+00:00"
+
+    def test_PAT01_update_opens_new_arb(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        new_or_changed, closed = self.tracker.update([arb], self.ts)
+        assert len(new_or_changed) == 1
+        assert new_or_changed[0][0] == "opened"
+        assert len(closed) == 0
+        assert self.tracker.active_count() == 1
+
+    def test_PAT02_update_closes_missing_arb(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        self.tracker.update([arb], self.ts)
+        new_or_changed, closed = self.tracker.update([], self.ts)
+        assert len(closed) == 1
+        assert self.tracker.active_count() == 0
+
+    def test_PAT03_update_emits_updated_on_price_change(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO", 0.45, 0.46)
+        self.tracker.update([arb], self.ts)
+        arb2 = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO", 0.44, 0.46)
+        new_or_changed, closed = self.tracker.update([arb2], self.ts)
+        assert len(new_or_changed) == 1
+        assert new_or_changed[0][0] == "updated"
+
+    def test_PAT04_mark_opened_inserts_without_closing_others(self):
+        # Core regression: confirming a single arb must not close pre-existing open arbs.
+        arb_a = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        arb_b = _prop_arb("KXMLBHIT-PLAYER-B", "Kalshi YES + Poly NO")
+        self.tracker.update([arb_a, arb_b], self.ts)
+        assert self.tracker.active_count() == 2
+
+        # Simulate REST confirm completing for a 3rd arb — mark_opened, not update()
+        arb_c = _prop_arb("KXMLBHIT-PLAYER-C", "Kalshi YES + Poly NO")
+        inserted = self.tracker.mark_opened(arb_c, self.ts)
+        assert inserted is True
+        assert self.tracker.active_count() == 3
+
+        # A and B must still be open
+        active_tickers = {a["kalshi_ticker"] for a in self.tracker.active()}
+        assert "KXMLBHIT-PLAYER-A" in active_tickers
+        assert "KXMLBHIT-PLAYER-B" in active_tickers
+        assert "KXMLBHIT-PLAYER-C" in active_tickers
+
+    def test_PAT05_mark_opened_idempotent_if_already_tracked(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        self.tracker.update([arb], self.ts)
+        # mark_opened on an already-tracked key must be a no-op: False return, no log written.
+        # The caller (_rest_confirm_and_emit) guards print/log on the return value, so if that
+        # guard ever breaks, log_event being called here is the signal.
+        with patch("ws_manager.log_event") as mock_log:
+            inserted = self.tracker.mark_opened(arb, self.ts)
+            assert inserted is False
+            assert self.tracker.active_count() == 1
+            # _print_and_log_prop_open must NOT be called for the duplicate
+            mock_log.assert_not_called()
+
+    def test_PAT05b_print_and_log_prop_open_called_on_fresh_insert(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        with patch("ws_manager.log_event") as mock_log:
+            _print_and_log_prop_open(arb, self.ts)
+            mock_log.assert_called_once()
+            event = mock_log.call_args[0][0]
+            assert event["event"] == "prop_arb"
+            assert event["kalshi_ticker"] == "KXMLBHIT-PLAYER-A"
+
+    def test_PAT06_update_after_mark_opened_closes_correctly(self):
+        # After mark_opened adds arb_c, the next full update that excludes arb_c should close it.
+        arb_a = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        arb_c = _prop_arb("KXMLBHIT-PLAYER-C", "Kalshi YES + Poly NO")
+        self.tracker.update([arb_a], self.ts)
+        self.tracker.mark_opened(arb_c, self.ts)
+        assert self.tracker.active_count() == 2
+
+        # Next tick: only arb_a is still live
+        new_or_changed, closed = self.tracker.update([arb_a], self.ts)
+        assert len(closed) == 1
+        assert closed[0]["arb"]["kalshi_ticker"] == "KXMLBHIT-PLAYER-C"
+        assert self.tracker.active_count() == 1
 
 
 if __name__ == "__main__":

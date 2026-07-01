@@ -26,8 +26,9 @@ import os
 import re
 import sys
 import time
+import unicodedata
 import uuid
-from datetime import date, datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -40,18 +41,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from matchers.baseball import (
-    BaseballMatcher,
-    normalize_name,
-    team_code,
-    teams_from_kalshi_title,
-    teams_from_kalshi_market,
-    kalshi_is_moneyline,
-    _kalshi_game_dt_utc,
-    _MONEYLINE_REJECT_KEYWORDS,
-    _ALIASES,
-    _ALIASES_SORTED,
-)
+from matchers.baseball import BaseballMatcher
 from matchers.basketball import BasketballMatcher
 from matchers.soccer import SoccerMatcher
 from matchers.tennis import TennisMatcher
@@ -87,20 +77,16 @@ SPORTS_CONFIGS = [
     }
 ]
 
-GLOBAL_MATCHERS = [cfg["matcher_cls"](arb_threshold=0.96) for cfg in SPORTS_CONFIGS]
-ALL_KALSHI_TICKERS = list({t for cfg in SPORTS_CONFIGS for t in cfg["kalshi_tickers"]})
-
-
 # ─── Config ────────────────────────────────────────────────────────────────────
 
 KALSHI_WS_URL         = "wss://api.elections.kalshi.com/trade-api/ws/v2"
 KALSHI_BASE           = "https://api.elections.kalshi.com/trade-api/v2"
 POLYMARKET_US_GATEWAY = "https://gateway.polymarket.us"
-ARB_THRESHOLD         = 0.96
-KALSHI_TAKER_FEE_RATE = 0.01
-POLYMARKET_TAKER_FEE_RATE = 0.01
+ARB_THRESHOLD         = 1.05  # FAKE ARB: raw price sum threshold (no fees), sanity-check mode
+KALSHI_TAKER_FEE_RATE = 0.0   # FAKE ARB: fees zeroed so threshold is raw price sum
+POLYMARKET_TAKER_FEE_RATE = 0.0
 POLY_POLL_SECONDS     = 2
-LOG_FILE              = "arb_log.jsonl"
+LOG_FILE              = "fake_arb_log.jsonl"
 _WS_SUBSCRIBE_CHUNK_SIZE = 50
 _CACHE_STALE_SECONDS  = 300
 _MAX_TIMESTAMP_SKEW_SECONDS = 10
@@ -112,20 +98,22 @@ SERIES_TO_SMT = {
     "KXMLBHIT": "baseball_player_hits",
     "KXMLBHR":  "baseball_player_home_runs",
     "KXMLBTB":  "baseball_player_total_bases",
-    # New MLB series — verified 2026-06-30 against live APIs:
-    # Kalshi titles: "Andrew Abbott: 7+ strikeouts?" / "Matt Olson: 5+ hits + runs + RBIs?" /
-    #   "Andrew Abbott: 17+ Outs Recorded?" — all match ^(.+?):\s*(\d+)\+ ✓
-    # Polymarket SMT strings confirmed via /v1/search?query=mlb+will+record+at+least ✓
-    "KXMLBKS":   "baseball_player_strikeouts",
-    "KXMLBHRR":  "baseball_player_hits_runs_rbis",
-    "KXMLBOUTS": "baseball_player_outs",
     "KXNBAPTS": "basketball_player_points",
     "KXNBAREB": "basketball_player_rebounds",
     "KXNBAAST": "basketball_player_assists",
     "KXNBA3PT": "basketball_player_threes",
 }
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+GLOBAL_MATCHERS = [cfg["matcher_cls"](arb_threshold=ARB_THRESHOLD) for cfg in SPORTS_CONFIGS]
+
+_MONEYLINE_REJECT_KEYWORDS = [
+    "total", "over", "under", "o u", "spread", "run line", "runline",
+    "strikeout", "home run", "hits", "innings", "first", "last",
+    "prop", "player", "pitcher", "batter", "era", "save",
+    "shutout", "tied after", "winning after",
+]
+
+# ─── Helpers (inlined from scanner.py) ────────────────────────────────────────
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -134,6 +122,139 @@ def utc_now() -> str:
 def log_event(obj: dict) -> None:
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(obj) + "\n")
+
+
+def evaluate_cross_market_arb(
+    poly_price: float,
+    poly_size: int,
+    kalshi_price: float,
+    kalshi_size: int,
+) -> dict:
+    # Kalshi base fee: 0.07 * size * price * (1 - price)
+    # Polymarket sports fee: 0.03 * size * price * (1 - price)
+    bottleneck_size = min(poly_size, kalshi_size)
+
+    if poly_price + kalshi_price >= 1.0:
+        print(f"[ARB-EVAL] Warning: prices sum to {poly_price + kalshi_price:.4f} >= 1.0 — no arb possible", file=sys.stderr)
+
+    kalshi_fee    = 0.07 * bottleneck_size * kalshi_price * (1 - kalshi_price)
+    poly_fee      = 0.03 * bottleneck_size * poly_price   * (1 - poly_price)
+    total_capital = bottleneck_size * (poly_price + kalshi_price)
+    total_fees    = kalshi_fee + poly_fee
+    payout        = bottleneck_size * 1.00
+    net_ev        = payout - total_capital - total_fees
+    roi           = (net_ev / (total_capital + total_fees)) * 100 if (total_capital + total_fees) > 0 else 0.0
+    execute       = net_ev >= 0.0 and bottleneck_size > 0
+
+    result = {
+        "bottleneck_size":        bottleneck_size,
+        "total_capital_required": round(total_capital, 6),
+        "total_fees_paid":        round(total_fees, 6),
+        "net_ev_dollars":         round(net_ev, 6),
+        "roi_percentage":         round(roi, 4),
+        "execute":                execute,
+    }
+
+    ts = utc_now()
+    log_event({
+        "event":        "cross_market_arb_eval",
+        "timestamp":    ts,
+        "poly_price":   poly_price,
+        "poly_size":    poly_size,
+        "kalshi_price": kalshi_price,
+        "kalshi_size":  kalshi_size,
+        **result,
+    })
+
+    if execute:
+        print(
+            f"[{ts}][ARB-EVAL] size={bottleneck_size} capital=${total_capital:.2f} "
+            f"fees=${total_fees:.2f} ev={net_ev:+.2f} roi={roi:.1f}% EXECUTE=TRUE"
+        )
+    else:
+        print(
+            f"[{ts}][ARB-EVAL] ev={net_ev:+.2f} — spread is a trap. EXECUTE=FALSE",
+            file=sys.stderr,
+        )
+
+    return result
+
+
+def normalize_name(s: str) -> str:
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+_ALIASES: list[tuple[str, str]] = [
+    ("arizona", "ari"), ("diamondbacks", "ari"),
+    ("atlanta", "atl"), ("braves", "atl"),
+    ("baltimore", "bal"), ("orioles", "bal"),
+    ("boston", "bos"), ("red sox", "bos"), ("redsox", "bos"),
+    ("chicago cubs", "chc"), ("cubs", "chc"),
+    ("chicago c", "chc"),
+    ("chicago white sox", "cws"), ("white sox", "cws"),
+    ("chicago ws", "cws"),
+    ("cincinnati", "cin"), ("reds", "cin"),
+    ("cleveland", "cle"), ("guardians", "cle"),
+    ("colorado", "col"), ("rockies", "col"),
+    ("detroit", "det"), ("tigers", "det"),
+    ("houston", "hou"), ("astros", "hou"),
+    ("kansas city", "kc"), ("royals", "kc"),
+    ("los angeles angels", "laa"), ("angels", "laa"),
+    ("los angeles a", "laa"),
+    ("los angeles dodgers", "lad"), ("dodgers", "lad"),
+    ("los angeles d", "lad"),
+    ("miami", "mia"), ("marlins", "mia"),
+    ("milwaukee", "mil"), ("brewers", "mil"),
+    ("minnesota", "min"), ("twins", "min"),
+    ("new york mets", "nym"), ("mets", "nym"),
+    ("new york m", "nym"),
+    ("new york yankees", "nyy"), ("yankees", "nyy"),
+    ("new york y", "nyy"),
+    ("oakland", "oak"), ("athletics", "oak"),
+    ("a s", "oak"),
+    ("philadelphia", "phi"), ("phillies", "phi"),
+    ("pittsburgh", "pit"), ("pirates", "pit"),
+    ("san diego", "sd"), ("padres", "sd"),
+    ("san francisco", "sf"), ("giants", "sf"),
+    ("seattle", "sea"), ("mariners", "sea"),
+    ("st. louis", "stl"), ("st louis", "stl"), ("cardinals", "stl"),
+    ("tampa bay", "tb"), ("rays", "tb"),
+    ("texas", "tex"), ("rangers", "tex"),
+    ("toronto", "tor"), ("blue jays", "tor"), ("bluejays", "tor"),
+    ("washington", "wsh"), ("nationals", "wsh"),
+]
+
+_ALIASES_SORTED = sorted(_ALIASES, key=lambda x: -len(x[0]))
+
+
+def team_code(text: str) -> Optional[str]:
+    t = normalize_name(text)
+    for alias, code in _ALIASES_SORTED:
+        if alias in t:
+            return code
+    return None
+
+
+def teams_from_kalshi_title(title: str) -> Optional[tuple[str, str]]:
+    clean = title.replace("@", " vs ")
+    normalized = normalize_name(clean)
+    for sep in [" vs ", " v ", " at "]:
+        parts = normalized.split(sep)
+        if len(parts) == 2:
+            a = team_code(parts[0])
+            b = team_code(parts[1])
+            if a and b:
+                return a, b
+    return None
+
+
+def teams_from_kalshi_market(market: dict) -> Optional[tuple[str, str]]:
+    title = market.get("title", "") or market.get("subtitle", "") or ""
+    return teams_from_kalshi_title(title)
 
 
 # Used only by today_tickers() for date-range filtering (date() comparison only).
@@ -146,6 +267,39 @@ def _kalshi_game_dt(ticker: str) -> Optional[datetime]:
         return None
 
 
+def kalshi_is_moneyline(market: dict) -> bool:
+    title = normalize_name((market.get("title", "") or "").replace("@", " vs "))
+    subtitle = normalize_name((market.get("subtitle", "") or "").replace("@", " vs "))
+    combined = title + " " + subtitle
+    for kw in _MONEYLINE_REJECT_KEYWORDS:
+        if kw in combined:
+            return False
+    accept_keywords = ["winner", "win", "moneyline", "beat", "defeat"]
+    if " vs " in combined or " at " in combined:
+        return True
+    for kw in accept_keywords:
+        if kw in combined:
+            return True
+    return False
+
+
+# ─── Helpers (inlined from props_scanner.py) ──────────────────────────────────
+
+def _normalize(s: str) -> str:
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", s.lower())).strip()
+
+
+def _kalshi_game_dt_utc(ticker: str) -> Optional[datetime]:
+    try:
+        seg = ticker.split("-")[1]
+        dt_naive = datetime.strptime(seg[:11], "%y%b%d%H%M")
+        return dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc)
+    except (IndexError, ValueError):
+        return None
+
+
 def _kalshi_parse_title(title: str) -> Optional[tuple[str, int]]:
     m = re.match(r"^(.+?):\s*(\d+)\+", title)
     if not m:
@@ -154,15 +308,23 @@ def _kalshi_parse_title(title: str) -> Optional[tuple[str, int]]:
 
 
 def _kalshi_ask(market: dict, side: str) -> Optional[float]:
-    for field, scale in ((f"{side}_ask_dollars", 1.0), (f"{side}_ask", 100.0)):
-        raw = market.get(field)
-        if raw is not None:
+    key = f"{side}_ask_dollars"
+    raw = market.get(key)
+    if raw is None:
+        key2 = f"{side}_ask"
+        raw2 = market.get(key2)
+        if raw2 is not None:
             try:
-                val = float(raw) / scale
+                val = float(raw2) / 100.0
                 return val if 0 < val < 1 else None
             except (TypeError, ValueError):
                 return None
-    return None
+        return None
+    try:
+        val = float(raw)
+        return val if 0 < val < 1 else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _poly_ask(side: dict) -> Optional[float]:
@@ -340,7 +502,7 @@ class KalshiOrderBook:
         self._best_ask[ticker] = min(positive) / 100.0 if positive else None
 
     def as_kalshi_markets(self, now: datetime) -> list[dict]:
-        """Return normalized market dicts in the format matcher.match() expects."""
+        """Return normalized market dicts in the format match_markets() expects."""
         stale_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
         result = []
         for ticker, meta in self._metadata.items():
@@ -373,8 +535,8 @@ class KalshiPriceCache:
         self._cache_date: Optional["datetime.date"] = None
 
     def update_from_ws(self, ticker: str, msg: dict) -> None:
-        raw_yes = msg["yes_ask"] if "yes_ask" in msg else msg.get("yes_ask_dollars")
-        raw_no  = msg["no_ask"]  if "no_ask"  in msg else msg.get("no_ask_dollars")
+        raw_yes = msg.get("yes_ask") if msg.get("yes_ask") is not None else msg.get("yes_ask_dollars")
+        raw_no  = msg.get("no_ask")  if msg.get("no_ask")  is not None else msg.get("no_ask_dollars")
         yes_ask = self._parse_price(raw_yes)
         no_ask  = self._parse_price(raw_no)
         if ticker not in self._cache:
@@ -422,18 +584,11 @@ class KalshiPriceCache:
         self._cache_date = today
 
     def as_props_list(self, now: datetime) -> list[dict]:
-        # Skip props where the game started more than 4 hours ago — those markets
-        # are mid-game/finished and WS prices lag REST, producing ghost arbs.
-        stale_game_cutoff = now - timedelta(hours=4)
-        # Skip entries whose price hasn't been refreshed recently — protects against
-        # "seeded via REST once, WS ticker never arrived" ghost prices.
-        stale_price_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
+        stale_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
         return [
             e for e in self._cache.values()
-            if not (e["yes_ask"] is None and e["no_ask"] is None)
-            and e["game_dt_utc"] >= stale_game_cutoff
-            and e.get("updated_at") is not None
-            and e["updated_at"] >= stale_price_cutoff
+            if e["updated_at"] >= stale_cutoff
+            and not (e["yes_ask"] is None and e["no_ask"] is None)
         ]
 
     def today_tickers(self, today: "datetime.date") -> list[str]:
@@ -453,7 +608,60 @@ class KalshiPriceCache:
             return None
 
 
-# ─── Arb Logic ────────────────────────────────────────────────────────────────
+# ─── Arb Logic (inlined from scanner.py / props_scanner.py) ───────────────────
+
+def match_markets(kalshi_markets: list[dict], polymarket_markets: list[dict]) -> list[dict]:
+    poly_by_team: dict[str, list[dict]] = {}
+    for pm in polymarket_markets:
+        poly_by_team.setdefault(pm["team_abbr"], []).append(pm)
+
+    matches = []
+    for km in kalshi_markets:
+        teams = teams_from_kalshi_market(km["raw"])
+        if teams is None:
+            continue
+        team_a, team_b = teams
+        k_team = km["ticker"].split("-")[-1].lower()
+        if k_team not in (team_a, team_b):
+            continue
+        opponent = team_b if k_team == team_a else team_a
+        k_game_dt_utc = _kalshi_game_dt_utc(km["ticker"])
+        if k_game_dt_utc is None:
+            continue
+        for poly_opp in poly_by_team.get(opponent, []):
+            p_start = poly_opp["raw"].get("gameStartTime", "")
+            try:
+                p_game_dt = datetime.fromisoformat(p_start.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            if abs((k_game_dt_utc - p_game_dt).total_seconds()) > 30 * 60:
+                continue
+            poly_kteam_sides = [
+                p for p in poly_by_team.get(k_team, []) if p["slug"] == poly_opp["slug"]
+            ]
+            if not poly_kteam_sides:
+                continue
+            k_ask = km["ask"]
+            p_ask = poly_opp["ask"]
+            k_fee = km["taker_fee"]
+            p_fee = poly_opp["taker_fee"]
+            total_cost = k_ask + p_ask + k_fee + p_fee  # k_fee/p_fee are 0 in fake_arb
+            matches.append({
+                "market_name": km["title"],
+                "kalshi_ticker": km["ticker"],
+                "kalshi_team": k_team,
+                "kalshi_ask": round(k_ask, 6),
+                "kalshi_taker_fee": round(k_fee, 6),
+                "polymarket_slug": poly_opp["slug"],
+                "polymarket_team": opponent,
+                "polymarket_ask": round(p_ask, 6),
+                "polymarket_taker_fee": round(p_fee, 6),
+                "total_cost": round(total_cost, 6),
+                "gap_cents": round((ARB_THRESHOLD - total_cost) * 100, 4),
+                "is_arb": total_cost < ARB_THRESHOLD,
+            })
+    return matches
+
 
 class OpportunityTracker:
     def __init__(self):
@@ -577,17 +785,15 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
         ]:
             if leg1_ask is None or leg2_ask is None:
                 continue
-            total = leg1_ask + leg2_ask
+            total = leg1_ask + leg2_ask  # FAKE ARB: raw prices only, no fees
             if total >= ARB_THRESHOLD:
                 continue
-            # Flag suspiciously deep gaps — likely ghost/stale price on one leg
-            suspicious = total < 0.80
             matches.append({
                 "direction": direction,
                 "event_title": pp["event_title"],
                 "game_start": pp["game_start"],
                 "player_name": pp["player_name"],
-                "stat_type": smt.replace("baseball_player_", "").replace("basketball_player_", ""),
+                "stat_type": smt.replace("baseball_player_", ""),
                 "line": kp["line"],
                 "leg1": leg1_name,
                 "leg1_ask": leg1_ask,
@@ -597,276 +803,51 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
                 "gap_cents": round((ARB_THRESHOLD - total) * 100, 2),
                 "kalshi_ticker": kp["ticker"],
                 "poly_smt": smt,
-                "suspicious": suspicious,
-                # Raw Poly WS prices at match time — logged for post-hoc staleness analysis
-                "poly_ws_yes_ask": pp.get("yes_ask"),
-                "poly_ws_no_ask": pp.get("no_ask"),
             })
 
     matches.sort(key=lambda x: -x["gap_cents"])
     return matches
 
 
-# ─── Kalshi REST Confirm Gate ─────────────────────────────────────────────────
-
-_KALSHI_CONFIRM_COOLDOWN_SECONDS = 5
-# keyed by (kalshi_ticker, direction); value = epoch seconds of last confirm attempt
-_kalshi_confirm_cooldown: dict[tuple, float] = {}
-
-
-async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
-    """
-    Background task: REST-confirm a new prop arb candidate against Kalshi's single-market
-    endpoint. Emits via _emit_prop_arbs if still an arb; logs ghost_rejected otherwise.
-    Must not be called inline from the WS handler — always via asyncio.create_task.
-    """
-    ticker = arb["kalshi_ticker"]
-    direction = arb["direction"]
-    url = f"{KALSHI_BASE}/markets/{ticker}"
-    ws_kalshi_ask = arb["leg1_ask"] if "Kalshi" in arb["leg1"] else arb["leg2_ask"]
-
-    try:
-        loop = asyncio.get_running_loop()
-        def _fetch():
-            resp = requests.get(url, timeout=REST_TIMEOUT)
-            resp.raise_for_status()
-            return resp.json()
-        data = await loop.run_in_executor(None, _fetch)
-        market = data.get("market", data)
-
-        # Determine confirmed Kalshi ask for the relevant side
-        if "Kalshi YES" in direction:
-            confirmed_k_ask = _kalshi_ask(market, "yes")
-        else:
-            confirmed_k_ask = _kalshi_ask(market, "no")
-
-        if confirmed_k_ask is None:
-            log_event({
-                "event": "ghost_rejected",
-                "timestamp": utc_now(),
-                "reason": "no_quote_from_rest",
-                "kalshi_ticker": ticker,
-                "direction": direction,
-                "ws_kalshi_ask": ws_kalshi_ask,
-                "rest_kalshi_ask": None,
-                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-            })
-            return
-
-        # Recompute against the same threshold match_props uses (raw ask sum vs ARB_THRESHOLD)
-        poly_ask = arb["leg2_ask"] if "Kalshi" in arb["leg1"] else arb["leg1_ask"]
-        total = confirmed_k_ask + poly_ask
-
-        if total >= ARB_THRESHOLD:
-            log_event({
-                "event": "ghost_rejected",
-                "timestamp": utc_now(),
-                "reason": "threshold_not_met_after_rest",
-                "kalshi_ticker": ticker,
-                "direction": direction,
-                "ws_kalshi_ask": ws_kalshi_ask,
-                "rest_kalshi_ask": confirmed_k_ask,
-                "ws_total": round(ws_kalshi_ask + poly_ask, 4),
-                "rest_total": round(total, 4),
-                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-            })
-            return
-
-        # Confirmed — patch in the REST-verified Kalshi ask, insert directly into
-        # tracker without diffing (_emit_prop_arbs([single_arb]) would close all others).
-        confirmed_arb = dict(arb)
-        if "Kalshi" in arb["leg1"]:
-            confirmed_arb["leg1_ask"] = confirmed_k_ask
-        else:
-            confirmed_arb["leg2_ask"] = confirmed_k_ask
-        confirmed_arb["total_cost"] = round(total, 4)
-        confirmed_arb["gap_cents"] = round((ARB_THRESHOLD - total) * 100, 2)
-
-        if not _prop_arb_tracker.mark_opened(confirmed_arb, timestamp):
-            return  # Race: already tracked from a concurrent WS tick — skip duplicate
-
-        print(f"\n{'='*70}")
-        print(f"  PROP ARB [REST-CONFIRMED] — {timestamp}")
-        print(f"{'='*70}")
-        _print_and_log_prop_open(confirmed_arb, timestamp)
-
-    except Exception as exc:
-        log_event({
-            "event": "ghost_rejected",
-            "timestamp": utc_now(),
-            "reason": "rest_error",
-            "kalshi_ticker": ticker,
-            "direction": direction,
-            "ws_kalshi_ask": ws_kalshi_ask,
-            "error": str(exc),
-            "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-            "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-        })
-
-
-class PropArbTracker:
-    """
-    Tracks open prop arbs across emit calls.
-    Prints CLOSED when an arb disappears; shows still-active summary on request.
-    """
-
-    def __init__(self):
-        # key → {arb dict, opened_at, last_prices}
-        self._open: dict[tuple, dict] = {}
-
-    def _key(self, arb: dict) -> tuple:
-        return (arb["kalshi_ticker"], arb["direction"])
-
-    def update(self, arbs: list[dict], timestamp: str) -> tuple[list[dict], list[dict]]:
-        """
-        Diff current arbs against open set.
-        Returns (new_or_changed, closed) lists.
-        """
-        current_keys = {self._key(a): a for a in arbs}
-        new_or_changed = []
-        closed = []
-
-        for key, arb in current_keys.items():
-            price_sig = (arb["leg1_ask"], arb["leg2_ask"])
-            if key not in self._open:
-                self._open[key] = {"arb": arb, "opened_at": timestamp, "last_prices": price_sig}
-                new_or_changed.append(("opened", arb))
-            elif self._open[key]["last_prices"] != price_sig:
-                self._open[key]["last_prices"] = price_sig
-                self._open[key]["arb"] = arb
-                new_or_changed.append(("updated", arb))
-
-        for key in set(self._open) - set(current_keys):
-            rec = self._open.pop(key)
-            closed.append(rec)
-
-        return new_or_changed, closed
-
-    def mark_opened(self, arb: dict, timestamp: str) -> bool:
-        """
-        Insert a confirmed arb directly into _open without touching other entries.
-        Returns True if newly inserted, False if already tracked (idempotent).
-        Use this from async confirm tasks — never route a single confirmed arb through
-        update(), which would close every other open entry not present in that call.
-        """
-        key = self._key(arb)
-        if key in self._open:
-            return False
-        price_sig = (arb["leg1_ask"], arb["leg2_ask"])
-        self._open[key] = {"arb": arb, "opened_at": timestamp, "last_prices": price_sig}
-        return True
-
-    def active(self) -> list[dict]:
-        return [rec["arb"] for rec in self._open.values()]
-
-    def active_count(self) -> int:
-        return len(self._open)
-
-
-_prop_arb_tracker = PropArbTracker()
-
-
-def _print_and_log_prop_open(arb: dict, timestamp: str) -> None:
-    """Shared formatter for a single confirmed prop arb open — print + log_event."""
-    ghost_tag = " [GHOST?]" if arb.get("suspicious") else ""
-    print(f"\n--- {arb['event_title']} (game: {arb['game_start']}) ---")
-    print(
-        f"  [NEW][{arb['gap_cents']:.1f}¢]{ghost_tag} {arb['player_name']} "
-        f"{arb['line']}+ {arb['stat_type']}: "
-        f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
-        f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
-        f"${arb['total_cost']:.2f}"
-    )
-    print(f"         Kalshi: {arb['kalshi_ticker']}")
-    log_event({
-        "event": "prop_arb",
-        "timestamp": timestamp,
-        **arb,
-        "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-        "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-    })
-
-
 def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
-    """
-    Print prop arb changes (new/updated/closed) and log them.
-    Also prints a still-active summary when arbs close or prices change.
-    """
-    new_or_changed, closed = _prop_arb_tracker.update(arbs, timestamp)
+    """Print and log prop arbs, skipping any whose prices haven't changed since last emit.
+    Evicts stale keys so an arb that disappears and returns will re-emit."""
+    active_keys = {(a["kalshi_ticker"], a["direction"]) for a in arbs}
+    for stale in set(_last_arb_prices) - active_keys:
+        del _last_arb_prices[stale]
 
-    # Print new/updated arbs
-    if new_or_changed:
-        print(f"\n{'='*70}")
-        print(f"  PROP ARB — {timestamp}")
-        print(f"{'='*70}")
-        for status, arb in new_or_changed:
-            ghost_tag = " [GHOST?]" if arb.get("suspicious") else ""
-            if status == "opened":
-                _print_and_log_prop_open(arb, timestamp)
-            else:
-                print(f"\n--- {arb['event_title']} (game: {arb['game_start']}) ---")
-                print(
-                    f"  [UPD][{arb['gap_cents']:.1f}¢]{ghost_tag} {arb['player_name']} "
-                    f"{arb['line']}+ {arb['stat_type']}: "
-                    f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
-                    f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
-                    f"${arb['total_cost']:.2f}"
-                )
-                print(f"         Kalshi: {arb['kalshi_ticker']}")
-                log_event({
-                    "event": "prop_arb",
-                    "timestamp": timestamp,
-                    **arb,
-                    "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-                    "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-                })
+    new_arbs = []
+    for arb in arbs:
+        key = (arb["kalshi_ticker"], arb["direction"])
+        price_sig = (arb["leg1_ask"], arb["leg2_ask"])
+        if _last_arb_prices.get(key) == price_sig:
+            continue
+        _last_arb_prices[key] = price_sig
+        new_arbs.append(arb)
 
-    # Print closed arbs
-    if closed:
-        print(f"\n{'─'*70}")
-        print(f"  PROP ARB CLOSED — {timestamp}")
-        for rec in closed:
-            arb = rec["arb"]
-            duration = ""
-            try:
-                dt = (datetime.fromisoformat(timestamp) - datetime.fromisoformat(rec["opened_at"])).total_seconds()
-                duration = f" (open {int(dt)}s)"
-            except Exception:
-                pass
-            print(
-                f"  [CLOSED{duration}] {arb['player_name']} {arb['line']}+ {arb['stat_type']}: "
-                f"{arb['leg1']}={arb['leg1_ask']:.2f} + {arb['leg2']}={arb['leg2_ask']:.2f}"
-            )
-            print(f"         Kalshi: {arb['kalshi_ticker']}")
+    if not new_arbs:
+        return
 
-        # Show what's still open after closures
-        still_active = _prop_arb_tracker.active()
-        if still_active:
-            print(f"\n  Still active ({len(still_active)}):")
-            for arb in still_active:
-                print(
-                    f"    [{arb['gap_cents']:.1f}¢] {arb['player_name']} {arb['line']}+ "
-                    f"{arb['stat_type']} — {arb['leg1']}={arb['leg1_ask']:.2f} + "
-                    f"{arb['leg2']}={arb['leg2_ask']:.2f}"
-                )
-        else:
-            print("  No prop arbs remaining.")
-        print(f"{'─'*70}")
+    print(f"\n{'='*70}")
+    print(f"  PROP ARB FOUND — {timestamp}")
+    print(f"{'='*70}")
+    current_game = None
+    for arb in new_arbs:
+        if arb["event_title"] != current_game:
+            current_game = arb["event_title"]
+            print(f"\n--- {arb['event_title']} ({arb['game_start']}) ---")
+        print(
+            f"  [{arb['gap_cents']:.1f}¢] {arb['player_name']} "
+            f"{arb['line']}+ {arb['stat_type']}: "
+            f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
+            f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
+            f"${arb['total_cost']:.2f}"
+        )
+        print(f"         Kalshi: {arb['kalshi_ticker']}")
 
-    # new_or_changed events are already logged by _print_and_log_prop_open (opened)
-    # or log_event (updated) above. Only closures need logging here.
-    for rec in closed:
-        arb = rec["arb"]
-        log_event({
-            "event": "prop_arb_closed",
-            "timestamp": timestamp,
-            "opened_at": rec["opened_at"],
-            **arb,
-            "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-            "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-        })
+    with open(LOG_FILE, "a") as f:
+        for arb in new_arbs:
+            f.write(json.dumps({"event": "prop_arb", "timestamp": timestamp, **arb}) + "\n")
 
 
 # ─── REST Fetch Functions ──────────────────────────────────────────────────────
@@ -874,7 +855,11 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
 async def fetch_kalshi(session: aiohttp.ClientSession) -> tuple[list[dict], str]:
     markets = []
     fetched_at = utc_now()
-    for ticker in ALL_KALSHI_TICKERS:
+    tickers = []
+    for cfg in SPORTS_CONFIGS:
+        tickers.extend(cfg["kalshi_tickers"])
+        
+    for ticker in set(tickers):
         url = f"{KALSHI_BASE}/markets"
         params = {"series_ticker": ticker, "status": "open", "limit": 200}
         try:
@@ -1000,7 +985,7 @@ def fetch_kalshi_props(today_utc: "datetime.date") -> list[dict]:
                 "series": series,
                 "ticker": ticker,
                 "player_name": player_name,
-                "player_norm": normalize_name(player_name),
+                "player_norm": _normalize(player_name),
                 "line": line,
                 "yes_ask": yes_ask,
                 "no_ask": no_ask,
@@ -1024,6 +1009,7 @@ def fetch_poly_props(today_str: str) -> list[dict]:
             pass
 
     supported_smts = set(SERIES_TO_SMT.values())
+    from datetime import date
     today = date.fromisoformat(today_str)
     valid_dates = {today_str, (today - timedelta(days=1)).isoformat()}
 
@@ -1055,7 +1041,7 @@ def fetch_poly_props(today_str: str) -> list[dict]:
             results.append({
                 "smt": smt,
                 "player_name": player_name,
-                "player_norm": normalize_name(player_name),
+                "player_norm": _normalize(player_name),
                 "line": m.get("line"),
                 "yes_ask": yes_ask,
                 "no_ask": no_ask,
@@ -1078,12 +1064,10 @@ _msg_id_iter  = itertools.count(1)
 _poly_ws_ml_token_map:    dict[str, dict] = {}
 _poly_ws_props_token_map: dict[str, dict] = {}
 _poly_ws_lock = asyncio.Lock()
-# Incremental-update index: slug → {"yes": list_idx, "no": list_idx}
-# Built by _rebuild_poly_ml_cache(); patched in O(1) by _patch_poly_ml_entry()
-_poly_ml_slot: dict[str, dict[str, int]] = {}
 _last_status_log: float = 0.0   # epoch seconds; status lines throttled to once per 60s
 _STATUS_LOG_INTERVAL = 60
 # keyed by (kalshi_ticker, direction); value is (leg1_ask, leg2_ask) last printed/logged
+_last_arb_prices: dict[tuple, tuple] = {}
 
 
 def _next_id() -> int:
@@ -1131,14 +1115,17 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
         sys.stdout.flush()
 
     ts = now.strftime("%H:%M:%S")
-    if not matches and not active:
-        global _last_status_log
-        if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
-            _last_status_log = time.time()
-            sys.stdout.write(
-                f"\r[{ts}][WS] No ML arb — {len(kalshi_markets)}K/{len(poly_markets)}P markets.".ljust(120) + "\r"
-            )
-            sys.stdout.flush()
+    global _last_status_log
+    if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
+        _last_status_log = time.time()
+        arb_count = sum(1 for m in matches if m["is_arb"])
+        best = min((m["total_cost"] for m in matches), default=None)
+        best_s = f" best={best:.4f}" if best else ""
+        sys.stdout.write(
+            f"\r[{ts}][WS] {arb_count} arbs / {len(matches)} pairs "
+            f"({len(kalshi_markets)}K/{len(poly_markets)}P){best_s} threshold={ARB_THRESHOLD}".ljust(120) + "\r"
+        )
+        sys.stdout.flush()
 
 
 # ─── WS Subscribe Helper ───────────────────────────────────────────────────────
@@ -1200,12 +1187,14 @@ def _handle_ws_message(data: dict) -> bool:
 # ─── Kalshi WS Task (single connection, both channels) ────────────────────────
 
 async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
-    backoff = 1
+    backoff    = 1
+    _pkey      = private_key
+    private_key = None  # drop outer reference after handoff
 
     while True:
         try:
-            auth_headers = _ws_auth_headers(api_key_id, private_key)
-            private_key = None  # reload on reconnect via _load_ws_credentials
+            auth_headers = _ws_auth_headers(api_key_id, _pkey)
+            _pkey = None  # clear after signing; reloaded on reconnect
 
             async with websockets.connect(
                 KALSHI_WS_URL, additional_headers=auth_headers
@@ -1219,10 +1208,6 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                 next_id = 1
                 next_id = await _ws_subscribe_chunks(ws, ml_tickers,   "orderbook_delta", next_id)
                 next_id = await _ws_subscribe_chunks(ws, prop_tickers,  "ticker",          next_id)
-
-                # Re-pull props via REST on every (re)connect — no props equivalent of
-                # orderbook_snapshot to backfill the gap, so REST is the only catch-up.
-                asyncio.create_task(_kalshi_props_reconcile_once())
 
                 print(
                     f"[WS] Connected — {len(ml_tickers)} moneyline tickers (orderbook_delta), "
@@ -1252,6 +1237,7 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                     new_today = datetime.now(timezone.utc).date()
                     if new_today != today:
                         today = new_today
+                        _order_book._metadata  # keep existing metadata
                         _price_cache.purge_old_date(today)
                         new_ml   = _order_book.today_tickers(today)
                         new_prop = _price_cache.today_tickers(today)
@@ -1270,35 +1256,12 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30)
 
-            if private_key is None:
+            if _pkey is None:
                 creds = _load_ws_credentials()
                 if creds is None:
                     print("[ERROR] Cannot reload Kalshi credentials for reconnect.", file=sys.stderr)
                     return
-                _, private_key = creds
-
-
-# ─── Kalshi Props Reconciliation Task ────────────────────────────────────────
-
-_KALSHI_PROPS_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
-
-async def _kalshi_props_reconcile_once() -> None:
-    """Pull Kalshi props via REST and merge into _price_cache. Non-fatal on error."""
-    loop = asyncio.get_running_loop()
-    today_utc = datetime.now(timezone.utc).date()
-    try:
-        props = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
-        _price_cache.seed_from_rest(props)
-    except Exception as exc:
-        print(f"[KALSHI-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
-
-
-async def _kalshi_props_reconciliation_task() -> None:
-    """Periodically re-pull Kalshi props via REST and merge into the price cache.
-    Doubles as a correctness check and a keep-alive that bumps updated_at."""
-    while True:
-        await asyncio.sleep(_KALSHI_PROPS_RECONCILE_INTERVAL)
-        await _kalshi_props_reconcile_once()
+                _, _pkey = creds
 
 
 # ─── Polymarket Polling Tasks ─────────────────────────────────────────────────
@@ -1387,80 +1350,6 @@ async def _poly_props_polling_task() -> None:
 # (Each market slug has one YES and one NO side; WS bestAsk is the ask for the YES side,
 #  and the NO ask = 1 - bestBid. We store both after each WS update.)
 
-async def _seed_one_ml_league(
-    session: aiohttp.ClientSession,
-    league_slug: str,
-    smt: str,
-    now: datetime,
-) -> list[str]:
-    """Fetch one Polymarket league's events and populate _poly_ws_ml_token_map. Returns market slugs."""
-    slugs: list[str] = []
-    try:
-        async with session.get(
-            f"{POLYMARKET_US_GATEWAY}/v2/leagues/{league_slug}/events",
-            params={"limit": 100},
-            timeout=REQUEST_TIMEOUT,
-        ) as resp:
-            resp.raise_for_status()
-            data = await resp.json()
-
-        for event in data.get("events", []):
-            for m in event.get("markets", []):
-                try:
-                    if m.get("sportsMarketType") != smt:
-                        continue
-                    if not m.get("active") or m.get("closed") or m.get("archived"):
-                        continue
-                    slug_m = m.get("slug", "")
-                    if not slug_m:
-                        continue
-
-                    yes_ask = no_ask = None
-                    yes_abbr = no_abbr = None
-                    yes_name = no_name = None
-                    for side in m.get("marketSides", []):
-                        team = side.get("team", {})
-                        abbr = team.get("abbreviation", "")
-                        if not abbr:
-                            abbr = side.get("participant", "")
-                        abbr = abbr.lower()
-                        display = normalize_name(
-                            team.get("displayName", "") or team.get("name", "") or abbr
-                        )
-                        quote = side.get("quote") or {}
-                        try:
-                            ask = float(quote.get("value", 0))
-                        except (TypeError, ValueError):
-                            ask = 0.0
-                        if side.get("long") is True:
-                            yes_ask = ask if 0 < ask < 1 else None
-                            yes_abbr = abbr
-                            yes_name = display
-                        else:
-                            no_ask = ask if 0 < ask < 1 else None
-                            no_abbr = abbr
-                            no_name = display
-
-                    _poly_ws_ml_token_map[slug_m] = {
-                        "slug": slug_m,
-                        "title": m.get("question") or slug_m,
-                        "yes_abbr": yes_abbr,
-                        "no_abbr": no_abbr,
-                        "yes_name": yes_name,
-                        "no_name": no_name,
-                        "yes_ask": yes_ask,
-                        "no_ask": no_ask,
-                        "raw": m,
-                        "updated_at": now,
-                    }
-                    slugs.append(slug_m)
-                except (TypeError, ValueError, KeyError):
-                    continue
-    except Exception as exc:
-        print(f"[POLY-WS] ML REST seed error for {league_slug}: {exc}", file=sys.stderr)
-    return slugs
-
-
 async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[str], list[str]]:
     """
     Fetch Polymarket markets via REST, populate slug-keyed WS maps, and return
@@ -1470,25 +1359,88 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
     global _poly_ws_ml_token_map, _poly_ws_props_token_map
 
     now = datetime.now(timezone.utc)
-
-    # ── Moneyline markets — all league slugs fetched concurrently ──
-    slug_to_smt = {
-        slug: cfg["poly_smt"]
-        for cfg in SPORTS_CONFIGS
-        for slug in cfg["poly_slugs"]
-    }
-    slug_lists = await asyncio.gather(*[
-        _seed_one_ml_league(session, league_slug, smt, now)
-        for league_slug, smt in slug_to_smt.items()
-    ])
-    ml_slugs: list[str] = [s for sublist in slug_lists for s in sublist]
+    ml_slugs: list[str] = []
     props_slugs: list[str] = []
+
+    # ── Moneyline markets ──
+    slug_to_smt = {}
+    for cfg in SPORTS_CONFIGS:
+        for slug in cfg["poly_slugs"]:
+            slug_to_smt[slug] = cfg["poly_smt"]
+
+    for slug, smt in slug_to_smt.items():
+        try:
+            async with session.get(
+                f"{POLYMARKET_US_GATEWAY}/v2/leagues/{slug}/events",
+                params={"limit": 100},
+                timeout=REQUEST_TIMEOUT,
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+
+            for event in data.get("events", []):
+                for m in event.get("markets", []):
+                    try:
+                        if m.get("sportsMarketType") != smt:
+                            continue
+                        if not m.get("active") or m.get("closed") or m.get("archived"):
+                            continue
+                        slug_m = m.get("slug", "")
+                        if not slug_m:
+                            continue
+                        
+                        yes_ask = no_ask = None
+                        yes_abbr = no_abbr = None
+                        yes_name = no_name = None
+                        for side in m.get("marketSides", []):
+                            team = side.get("team", {})
+                            abbr = team.get("abbreviation", "")
+                            if not abbr:
+                                abbr = side.get("participant", "")
+                            abbr = abbr.lower()
+                            display = normalize_name(
+                                team.get("displayName", "") or team.get("name", "") or abbr
+                            )
+
+                            quote = side.get("quote") or {}
+                            try:
+                                ask = float(quote.get("value", 0))
+                            except (TypeError, ValueError):
+                                ask = 0.0
+
+                            if side.get("long") is True:
+                                yes_ask = ask if 0 < ask < 1 else None
+                                yes_abbr = abbr
+                                yes_name = display
+                            else:
+                                no_ask = ask if 0 < ask < 1 else None
+                                no_abbr = abbr
+                                no_name = display
+
+                        _poly_ws_ml_token_map[slug_m] = {
+                            "slug": slug_m,
+                            "title": m.get("question") or slug_m,
+                            "yes_abbr": yes_abbr,
+                            "no_abbr": no_abbr,
+                            "yes_name": yes_name,
+                            "no_name": no_name,
+                            "yes_ask": yes_ask,
+                            "no_ask": no_ask,
+                            "raw": m,
+                            "updated_at": now,
+                        }
+                        ml_slugs.append(slug_m)
+                    except (TypeError, ValueError, KeyError):
+                        continue
+        except Exception as exc:
+            print(f"[POLY-WS] ML REST seed error for {slug}: {exc}", file=sys.stderr)
 
     # ── Props markets ──
     loop = asyncio.get_running_loop()
     today_str = now.date().strftime("%Y-%m-%d")
     supported_smts = set(SERIES_TO_SMT.values())
-    today = date.fromisoformat(today_str)
+    from datetime import date as _date
+    today = _date.fromisoformat(today_str)
     valid_dates = {today_str, (today - timedelta(days=1)).isoformat()}
 
     try:
@@ -1496,7 +1448,7 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
             events = []
             for q in ["mlb will record at least", "nba will record", "player points", "player rebounds"]:
                 try:
-                    resp = requests.get(
+                    resp = __import__("requests").get(
                         f"{POLYMARKET_US_GATEWAY}/v1/search",
                         params={"query": q, "limit": 200},
                         timeout=REST_TIMEOUT,
@@ -1538,7 +1490,7 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
                     _poly_ws_props_token_map[slug] = {
                         "smt": smt,
                         "player_name": player_name,
-                        "player_norm": normalize_name(player_name),
+                        "player_norm": _normalize(player_name),
                         "line": m.get("line"),
                         "game_start": game_start,
                         "event_title": event_title,
@@ -1557,29 +1509,25 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
 
 def _rebuild_poly_ml_cache() -> None:
     """
-    Full rebuild of _poly_ml_cache from _poly_ws_ml_token_map. Also rebuilds
-    _poly_ml_slot index for O(1) incremental patches.
-    Called on startup/reconnect. Hot-path updates use _patch_poly_ml_entry() instead.
+    Rebuild _poly_ml_cache from _poly_ws_ml_token_map (slug-keyed).
+    Emits one entry per side (YES team / NO team) in the format match_markets() consumes.
     Must be called while holding _poly_ws_lock (or before WS task starts).
     """
-    global _poly_ml_cache, _poly_ml_slot
+    global _poly_ml_cache
     now = datetime.now(timezone.utc)
     stale_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
-    markets: list[dict] = []
-    slot: dict[str, dict[str, int]] = {}
+    markets = []
     latest_update: Optional[datetime] = None
 
     for entry in _poly_ws_ml_token_map.values():
         updated = entry.get("updated_at")
         if updated is None or updated < stale_cutoff:
             continue
-        slug = entry["slug"]
-        slot[slug] = {}
+        # Emit YES side (team that wins if YES resolves)
         yes_ask = entry.get("yes_ask")
         if yes_ask and 0 < yes_ask < 1 and entry.get("yes_abbr"):
-            slot[slug]["yes"] = len(markets)
             markets.append({
-                "slug": slug,
+                "slug": entry["slug"],
                 "title": entry["title"],
                 "team_abbr": entry["yes_abbr"],
                 "team_name": entry.get("yes_name", ""),
@@ -1587,11 +1535,11 @@ def _rebuild_poly_ml_cache() -> None:
                 "taker_fee": round(yes_ask * POLYMARKET_TAKER_FEE_RATE, 6),
                 "raw": entry["raw"],
             })
+        # Emit NO side
         no_ask = entry.get("no_ask")
         if no_ask and 0 < no_ask < 1 and entry.get("no_abbr"):
-            slot[slug]["no"] = len(markets)
             markets.append({
-                "slug": slug,
+                "slug": entry["slug"],
                 "title": entry["title"],
                 "team_abbr": entry["no_abbr"],
                 "team_name": entry.get("no_name", ""),
@@ -1604,47 +1552,14 @@ def _rebuild_poly_ml_cache() -> None:
 
     fetched_at = latest_update.isoformat() if latest_update else utc_now()
     _poly_ml_cache = (markets, fetched_at)
-    _poly_ml_slot = slot
-
-
-def _patch_poly_ml_entry(slug: str, yes_ask: Optional[float], no_ask: Optional[float]) -> None:
-    """
-    O(1) in-place update of _poly_ml_cache markets for a single slug.
-    Patches ask and taker_fee on the existing YES/NO slot entries.
-    Falls back to full rebuild if the slug isn't indexed (new market since last seed).
-    Must be called while holding _poly_ws_lock.
-    """
-    global _poly_ml_cache
-    if slug not in _poly_ml_slot:
-        _rebuild_poly_ml_cache()
-        return
-    markets, _ = _poly_ml_cache
-    slots = _poly_ml_slot[slug]
-    if yes_ask is not None and "yes" in slots:
-        m = markets[slots["yes"]]
-        m["ask"] = yes_ask
-        m["taker_fee"] = round(yes_ask * POLYMARKET_TAKER_FEE_RATE, 6)
-    if no_ask is not None and "no" in slots:
-        m = markets[slots["no"]]
-        m["ask"] = no_ask
-        m["taker_fee"] = round(no_ask * POLYMARKET_TAKER_FEE_RATE, 6)
-    _poly_ml_cache = (markets, utc_now())
 
 
 def _reconstruct_poly_props_list() -> list[dict]:
     """Build poly_props list from WS cache for match_props() consumption."""
-    now = datetime.now(timezone.utc)
-    stale_game_cutoff = now - timedelta(hours=4)
     result = []
     for entry in _poly_ws_props_token_map.values():
         if entry.get("yes_ask") is None and entry.get("no_ask") is None:
             continue
-        try:
-            game_dt = datetime.fromisoformat(entry["game_start"].replace("Z", "+00:00"))
-            if game_dt < stale_game_cutoff:
-                continue
-        except (ValueError, KeyError):
-            pass
         result.append({
             "smt": entry["smt"],
             "player_name": entry["player_name"],
@@ -1660,44 +1575,18 @@ def _reconstruct_poly_props_list() -> list[dict]:
 
 def _run_props_arb_check_from_ws() -> None:
     """Trigger props arb check using current WS cache + Kalshi price cache."""
-    global _last_status_log
     now_utc = datetime.now(timezone.utc)
     _price_cache.purge_old_date(now_utc.date())
     kalshi_props = _price_cache.as_props_list(now_utc)
-    poly_props = _reconstruct_poly_props_list()
-
     if not kalshi_props:
-        if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
-            _last_status_log = time.time()
-            ts = now_utc.strftime("%H:%M:%S")
-            sys.stdout.write(
-                f"\r[{ts}][POLY-WS] No props arb — 0K/{len(poly_props)}P props (Kalshi cache stale).".ljust(100) + "\r"
-            )
-            sys.stdout.flush()
         return
-
+    poly_props = _reconstruct_poly_props_list()
     arbs = match_props(kalshi_props, poly_props)
     timestamp = now_utc.isoformat()
-    if arbs or _prop_arb_tracker.active_count():
-        now_epoch = time.time()
-        # Partition: new opens (need REST confirm) vs already-open (pass through)
-        confirmed_pass_through = []
-        for arb in arbs:
-            key = (arb["kalshi_ticker"], arb["direction"])
-            if key in _prop_arb_tracker._open:
-                # Already tracked — update/close logic handled by _emit_prop_arbs
-                confirmed_pass_through.append(arb)
-            else:
-                last_attempt = _kalshi_confirm_cooldown.get(key, 0.0)
-                if now_epoch - last_attempt < _KALSHI_CONFIRM_COOLDOWN_SECONDS:
-                    # Within cooldown — suppress; accepted false negative
-                    continue
-                _kalshi_confirm_cooldown[key] = now_epoch
-                asyncio.create_task(_rest_confirm_and_emit(arb, timestamp))
-        # Drive close detection even when confirmed_pass_through is empty — any open
-        # arb absent from confirmed_pass_through will be correctly marked closed.
-        _emit_prop_arbs(confirmed_pass_through, timestamp)
-    if not arbs:
+    if arbs:
+        _emit_prop_arbs(arbs, timestamp)
+    else:
+        global _last_status_log
         if time.time() - _last_status_log >= _STATUS_LOG_INTERVAL:
             _last_status_log = time.time()
             ts = now_utc.strftime("%H:%M:%S")
@@ -1752,7 +1641,7 @@ async def _handle_poly_ws_message(data: dict) -> None:
                 if no_ask is not None:
                     entry["no_ask"] = no_ask
                 entry["updated_at"] = now
-                _patch_poly_ml_entry(slug, yes_ask, no_ask)
+                _rebuild_poly_ml_cache()
                 is_ml = True
             elif slug in _poly_ws_props_token_map:
                 entry = _poly_ws_props_token_map[slug]
@@ -1871,7 +1760,6 @@ async def main_ws(api_key_id: str, private_key) -> None:
     await asyncio.gather(
         _kalshi_ws_task(api_key_id, private_key),
         _poly_ws_task(),
-        _kalshi_props_reconciliation_task(),
         # _poly_ml_polling_task(),    # kept for side-by-side testing; swap with _poly_ws_task() above
         # _poly_props_polling_task(), # kept for side-by-side testing
     )
