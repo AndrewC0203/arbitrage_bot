@@ -1681,21 +1681,23 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
     return ml_slugs, props_slugs
 
 
-_POLY_PROPS_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
+_POLY_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
 
-async def _poly_props_reconcile_task() -> None:
+async def _poly_reconcile_task() -> None:
     """
-    Periodically re-pull Polymarket props via REST: refreshes prices/flags,
-    evicts markets that went closed, and bumps updated_at so live markets pass
-    the staleness filter (mirrors _kalshi_props_reconciliation_task).
+    Periodically re-pull Polymarket ML + props via REST: refreshes prices/flags
+    (WS-fresh prices are preserved via _carry_ws_fresh_prices), evicts props
+    that went closed, discovers new markets so the delta-subscribe loop can pick
+    them up, and bumps updated_at so live markets pass the staleness filter
+    (mirrors _kalshi_props_reconciliation_task).
     """
-    loop = asyncio.get_running_loop()
     while True:
-        await asyncio.sleep(_POLY_PROPS_RECONCILE_INTERVAL)
+        await asyncio.sleep(_POLY_RECONCILE_INTERVAL)
         try:
-            events = await loop.run_in_executor(None, _fetch_poly_props_events)
+            async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
+                await _poly_ws_seed_from_rest(session)
             async with _poly_ws_lock:
-                _update_poly_props_map(events)
+                _rebuild_poly_ml_cache()
         except Exception as exc:
             print(f"[POLY-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
 
@@ -1928,6 +1930,47 @@ async def _handle_poly_ws_message(data: dict) -> None:
         return
 
 
+_POLY_DELTA_SUB_INTERVAL = 20   # seconds between checks for newly discovered slugs
+_POLY_MAX_SUB_FRAMES = 40       # reconnect to consolidate into one subscription after this
+
+
+async def _poly_delta_subscribe_loop(ws, subscribed: set[str], req_counter) -> None:
+    """Subscribe slugs that entered the WS maps after connect (reconcile finds
+    new markets every 60s; without this they would only ever get 30s-stale REST
+    quotes). Raises to force a consolidating reconnect once the connection has
+    accumulated _POLY_MAX_SUB_FRAMES subscriptions."""
+    n_frames = 1  # the initial subscribe
+    while True:
+        await asyncio.sleep(_POLY_DELTA_SUB_INTERVAL)
+        async with _poly_ws_lock:
+            new_slugs = _poly_unsubscribed_slugs(subscribed)
+        if not new_slugs:
+            continue
+        if n_frames >= _POLY_MAX_SUB_FRAMES:
+            raise RuntimeError(
+                f"{n_frames} subscribe frames on one connection — reconnecting to consolidate"
+            )
+        await ws.send(json.dumps({
+            "subscribe": {
+                "requestId": f"poly-{next(req_counter)}",
+                "subscriptionType": "SUBSCRIPTION_TYPE_MARKET_DATA_LITE",
+                "marketSlugs": new_slugs,
+            }
+        }))
+        subscribed.update(new_slugs)
+        n_frames += 1
+        print(f"[POLY-WS] Delta-subscribed {len(new_slugs)} new slugs.", file=sys.stderr)
+
+
+async def _poly_recv_loop(ws) -> None:
+    async for raw_msg in ws:
+        try:
+            data = json.loads(raw_msg)
+        except json.JSONDecodeError:
+            continue
+        await _handle_poly_ws_message(data)
+
+
 async def _poly_ws_task() -> None:
     """
     Single Polymarket WS connection. Seeds slug maps from REST on every connect,
@@ -1981,12 +2024,21 @@ async def _poly_ws_task() -> None:
                     file=sys.stderr,
                 )
 
-                async for raw_msg in ws:
-                    try:
-                        data = json.loads(raw_msg)
-                    except json.JSONDecodeError:
-                        continue
-                    await _handle_poly_ws_message(data)
+                subscribed = set(all_slugs)
+                recv_task = asyncio.create_task(_poly_recv_loop(ws))
+                delta_task = asyncio.create_task(
+                    _poly_delta_subscribe_loop(ws, subscribed, _req_counter)
+                )
+                try:
+                    done, pending = await asyncio.wait(
+                        {recv_task, delta_task}, return_when=asyncio.FIRST_EXCEPTION
+                    )
+                finally:
+                    for t in (recv_task, delta_task):
+                        t.cancel()
+                    await asyncio.gather(recv_task, delta_task, return_exceptions=True)
+                for t in done:
+                    t.result()  # re-raise so the outer loop reconnects
 
         except Exception as exc:
             print(
@@ -2026,7 +2078,7 @@ async def main_ws(api_key_id: str, private_key) -> None:
         _kalshi_ws_task(api_key_id, private_key),
         _poly_ws_task(),
         _kalshi_props_reconciliation_task(),
-        _poly_props_reconcile_task(),
+        _poly_reconcile_task(),
         # _poly_ml_polling_task(),    # kept for side-by-side testing; swap with _poly_ws_task() above
         # _poly_props_polling_task(), # kept for side-by-side testing
     )
