@@ -112,12 +112,10 @@ SERIES_TO_SMT = {
     "KXMLBHIT": "baseball_player_hits",
     "KXMLBHR":  "baseball_player_home_runs",
     "KXMLBTB":  "baseball_player_total_bases",
-    # New MLB series — title format verified via REST spot-check 2026-06-30:
-    # KXMLBKS uses "Player Name: N+" (standard format, pitchers and batters).
-    # KXMLBHRR combines hits+runs+RBIs: titles match standard regex.
-    # KXMLBOUTS: outs recorded by a pitcher; titles match standard regex.
-    # Polymarket SMT strings are inferred — if no matches appear after wiring in,
-    # the SMT value is wrong; check /v1/search results for the actual sportsMarketType.
+    # New MLB series — verified 2026-06-30 against live APIs:
+    # Kalshi titles: "Andrew Abbott: 7+ strikeouts?" / "Matt Olson: 5+ hits + runs + RBIs?" /
+    #   "Andrew Abbott: 17+ Outs Recorded?" — all match ^(.+?):\s*(\d+)\+ ✓
+    # Polymarket SMT strings confirmed via /v1/search?query=mlb+will+record+at+least ✓
     "KXMLBKS":   "baseball_player_strikeouts",
     "KXMLBHRR":  "baseball_player_hits_runs_rbis",
     "KXMLBOUTS": "baseball_player_outs",
@@ -676,7 +674,8 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
             })
             return
 
-        # Confirmed — patch in the REST-verified Kalshi ask and emit
+        # Confirmed — patch in the REST-verified Kalshi ask, insert directly into
+        # tracker without diffing (_emit_prop_arbs([single_arb]) would close all others).
         confirmed_arb = dict(arb)
         if "Kalshi" in arb["leg1"]:
             confirmed_arb["leg1_ask"] = confirmed_k_ask
@@ -684,7 +683,29 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
             confirmed_arb["leg2_ask"] = confirmed_k_ask
         confirmed_arb["total_cost"] = round(total, 4)
         confirmed_arb["gap_cents"] = round((ARB_THRESHOLD - total) * 100, 2)
-        _emit_prop_arbs([confirmed_arb], timestamp)
+
+        if not _prop_arb_tracker.mark_opened(confirmed_arb, timestamp):
+            return  # Race: already tracked from a concurrent WS tick — skip duplicate
+
+        print(f"\n{'='*70}")
+        print(f"  PROP ARB [REST-CONFIRMED] — {timestamp}")
+        print(f"{'='*70}")
+        print(f"\n--- {confirmed_arb['event_title']} (game: {confirmed_arb['game_start']}) ---")
+        print(
+            f"  [NEW][{confirmed_arb['gap_cents']:.1f}¢] {confirmed_arb['player_name']} "
+            f"{confirmed_arb['line']}+ {confirmed_arb['stat_type']}: "
+            f"{confirmed_arb['leg1']}={confirmed_arb['leg1_ask']:.2f} + "
+            f"{confirmed_arb['leg2']}={confirmed_arb['leg2_ask']:.2f} = "
+            f"${confirmed_arb['total_cost']:.2f}"
+        )
+        print(f"         Kalshi: {confirmed_arb['kalshi_ticker']}")
+        log_event({
+            "event": "prop_arb",
+            "timestamp": timestamp,
+            **confirmed_arb,
+            "poly_ws_yes_ask": confirmed_arb.get("poly_ws_yes_ask"),
+            "poly_ws_no_ask": confirmed_arb.get("poly_ws_no_ask"),
+        })
 
     except Exception as exc:
         log_event({
@@ -737,6 +758,20 @@ class PropArbTracker:
             closed.append(rec)
 
         return new_or_changed, closed
+
+    def mark_opened(self, arb: dict, timestamp: str) -> bool:
+        """
+        Insert a confirmed arb directly into _open without touching other entries.
+        Returns True if newly inserted, False if already tracked (idempotent).
+        Use this from async confirm tasks — never route a single confirmed arb through
+        update(), which would close every other open entry not present in that call.
+        """
+        key = self._key(arb)
+        if key in self._open:
+            return False
+        price_sig = (arb["leg1_ask"], arb["leg2_ask"])
+        self._open[key] = {"arb": arb, "opened_at": timestamp, "last_prices": price_sig}
+        return True
 
     def active(self) -> list[dict]:
         return [rec["arb"] for rec in self._open.values()]

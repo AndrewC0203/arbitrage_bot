@@ -6,6 +6,14 @@ Log of forks and the reasoning behind each choice.
 
 The old `_kalshi_game_dt` returned a naive datetime tagged as UTC, and every call site then did `.replace(tzinfo=_ET)` on an already-tz-aware object — a silent no-op that left the value as UTC instead of converting ET→UTC. Two options: (A) fix each call site to call `.replace(tzinfo=_ET)` before the function, or (B) rename the function to `_kalshi_game_dt_utc` and do the ET→UTC conversion inside it. Chose B because it centralises the correct conversion and eliminates the call-site footgun. The old function remains in `ws_manager.py` for the `today_tickers` staleness check, which only needs date-level accuracy and is unaffected.
 
+## [2026-06-30] REST confirm async close bug — mark_opened instead of _emit_prop_arbs
+
+`_rest_confirm_and_emit` originally called `_emit_prop_arbs([single_arb], ...)`. `PropArbTracker.update()` diffs whatever list it receives against `_open` — so passing a one-item list would close every other open arb not in that list. Fixed by adding `PropArbTracker.mark_opened()` which inserts directly into `_open` without touching other entries. The confirm path now calls `mark_opened` + does its own print/log inline; `_emit_prop_arbs` is only ever called from `_run_props_arb_check_from_ws` with the full pass-through set. 6 regression tests added in `TestPropArbTracker` to cover this and the idempotency case.
+
+## [2026-06-30] new MLB series title + SMT verification — confirmed live against both APIs
+
+KXMLBKS, KXMLBHRR, KXMLBOUTS titles all match `^(.+?):\s*(\d+)\+`. Polymarket SMT strings (`baseball_player_strikeouts`, `baseball_player_hits_runs_rbis`, `baseball_player_outs`) confirmed live via `/v1/search?query=mlb+will+record+at+least` — all three appear with real markets. Comment in `SERIES_TO_SMT` updated to reflect confirmed status.
+
 ## [2026-06-30] props staleness + REST confirm — Kalshi-side only, Polymarket deferred
 
 Implemented four changes to reduce false positives from stale Kalshi `ticker` WS prices:

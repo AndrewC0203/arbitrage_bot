@@ -32,3 +32,7 @@ Categories: `[STYLE]` `[CODE]` `[ARCH]` `[TOOL]` `[PROCESS]` `[DATA]` `[UX]` `[O
 11. [DATA] Kalshi `GET /markets/{ticker}` (single-market endpoint) returns `{"market": {...}}` — unwrap with `data.get("market", data)` to handle both wrapped and bare formats defensively.
 
 12. [ARCH] `PropArbTracker` close detection requires ALL currently-valid arbs (not just new ones) to be passed to `_emit_prop_arbs`. When gating new opens through REST confirmation, still call `_emit_prop_arbs(confirmed_pass_through, ...)` with the already-open arbs so that disappearances are detected and logged as closures.
+
+13. [CODE] Never call `_emit_prop_arbs([single_arb], ...)` from a background confirm task — `PropArbTracker.update()` closes everything in `_open` not present in the passed list. Use `PropArbTracker.mark_opened()` for confirmed arbs; it inserts directly into `_open` without touching other entries.
+
+14. [PROCESS] Always verify new Kalshi prop series against live REST before wiring in: (1) fetch 5 titles via `GET /markets?series_ticker=<SERIES>` and check against `^(.+?):\s*(\d+)\+`; (2) confirm Polymarket SMT string via `/v1/search?query=mlb+will+record+at+least` before adding to `SERIES_TO_SMT`. Silent zero-match days are hard to notice — verify at the point of addition, not after merge.

@@ -20,6 +20,7 @@ from ws_manager import (
     KALSHI_TAKER_FEE_RATE,
     POLYMARKET_TAKER_FEE_RATE,
     OpportunityTracker,
+    PropArbTracker,
     kalshi_is_moneyline,
     normalize_name,
     team_code,
@@ -883,6 +884,102 @@ class TestMatchMarkets(unittest.TestCase):
                              game_start=late_start)
         results = match_markets(km, pm)
         assert len(results) == 0
+
+
+# ─── Domain 7 — PropArbTracker lifecycle ─────────────────────────────────────
+
+def _prop_arb(ticker, direction, leg1_ask=0.45, leg2_ask=0.46):
+    return {
+        "kalshi_ticker": ticker,
+        "direction": direction,
+        "leg1": "Kalshi YES" if "Kalshi YES" in direction else "Poly YES",
+        "leg1_ask": leg1_ask,
+        "leg2": "Poly NO" if "Kalshi YES" in direction else "Kalshi NO",
+        "leg2_ask": leg2_ask,
+        "total_cost": round(leg1_ask + leg2_ask, 4),
+        "gap_cents": round((0.96 - leg1_ask - leg2_ask) * 100, 2),
+        "player_name": "Test Player",
+        "stat_type": "hits",
+        "line": 1,
+        "event_title": "Game A",
+        "game_start": "2026-06-30T23:00:00Z",
+        "poly_smt": "baseball_player_hits",
+        "suspicious": False,
+        "poly_ws_yes_ask": 0.45,
+        "poly_ws_no_ask": 0.46,
+    }
+
+
+class TestPropArbTracker(unittest.TestCase):
+    """Domain 7 — PropArbTracker lifecycle and mark_opened isolation."""
+
+    def setUp(self):
+        self.tracker = PropArbTracker()
+        self.ts = "2026-06-30T12:00:00+00:00"
+
+    def test_PAT01_update_opens_new_arb(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        new_or_changed, closed = self.tracker.update([arb], self.ts)
+        assert len(new_or_changed) == 1
+        assert new_or_changed[0][0] == "opened"
+        assert len(closed) == 0
+        assert self.tracker.active_count() == 1
+
+    def test_PAT02_update_closes_missing_arb(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        self.tracker.update([arb], self.ts)
+        new_or_changed, closed = self.tracker.update([], self.ts)
+        assert len(closed) == 1
+        assert self.tracker.active_count() == 0
+
+    def test_PAT03_update_emits_updated_on_price_change(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO", 0.45, 0.46)
+        self.tracker.update([arb], self.ts)
+        arb2 = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO", 0.44, 0.46)
+        new_or_changed, closed = self.tracker.update([arb2], self.ts)
+        assert len(new_or_changed) == 1
+        assert new_or_changed[0][0] == "updated"
+
+    def test_PAT04_mark_opened_inserts_without_closing_others(self):
+        # Core regression: confirming a single arb must not close pre-existing open arbs.
+        arb_a = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        arb_b = _prop_arb("KXMLBHIT-PLAYER-B", "Kalshi YES + Poly NO")
+        self.tracker.update([arb_a, arb_b], self.ts)
+        assert self.tracker.active_count() == 2
+
+        # Simulate REST confirm completing for a 3rd arb — mark_opened, not update()
+        arb_c = _prop_arb("KXMLBHIT-PLAYER-C", "Kalshi YES + Poly NO")
+        inserted = self.tracker.mark_opened(arb_c, self.ts)
+        assert inserted is True
+        assert self.tracker.active_count() == 3
+
+        # A and B must still be open
+        active_tickers = {a["kalshi_ticker"] for a in self.tracker.active()}
+        assert "KXMLBHIT-PLAYER-A" in active_tickers
+        assert "KXMLBHIT-PLAYER-B" in active_tickers
+        assert "KXMLBHIT-PLAYER-C" in active_tickers
+
+    def test_PAT05_mark_opened_idempotent_if_already_tracked(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        self.tracker.update([arb], self.ts)
+        # Calling mark_opened on the same key (e.g. concurrent WS ticks) should be a no-op
+        inserted = self.tracker.mark_opened(arb, self.ts)
+        assert inserted is False
+        assert self.tracker.active_count() == 1
+
+    def test_PAT06_update_after_mark_opened_closes_correctly(self):
+        # After mark_opened adds arb_c, the next full update that excludes arb_c should close it.
+        arb_a = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        arb_c = _prop_arb("KXMLBHIT-PLAYER-C", "Kalshi YES + Poly NO")
+        self.tracker.update([arb_a], self.ts)
+        self.tracker.mark_opened(arb_c, self.ts)
+        assert self.tracker.active_count() == 2
+
+        # Next tick: only arb_a is still live
+        new_or_changed, closed = self.tracker.update([arb_a], self.ts)
+        assert len(closed) == 1
+        assert closed[0]["arb"]["kalshi_ticker"] == "KXMLBHIT-PLAYER-C"
+        assert self.tracker.active_count() == 1
 
 
 if __name__ == "__main__":
