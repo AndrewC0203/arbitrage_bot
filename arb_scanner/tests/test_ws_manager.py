@@ -256,6 +256,61 @@ class TestPolyPropsMapUpdate(unittest.TestCase):
         self.assertEqual(listed, {"fresh"})
 
 
+def _match_inputs(k_yes=0.50, p_no=0.455):
+    game = datetime.now(timezone.utc)
+    kp = [{"series": "KXMLBHIT", "ticker": "K-T1", "player_name": "A B",
+           "player_norm": "a b", "line": 2, "yes_ask": k_yes, "no_ask": None,
+           "game_dt_utc": game, "updated_at": game}]
+    pp = [{"smt": "baseball_player_hits", "player_norm": "a b", "player_name": "A B",
+           "line": 2, "yes_ask": None, "no_ask": p_no,
+           "game_start": game.strftime("%Y-%m-%dT%H:%M:%SZ"), "event_title": "X"}]
+    return kp, pp
+
+
+class TestPropsFees(unittest.TestCase):
+    """Fix E: props arb math must include the documented 1%-per-leg taker fees
+    (CLAUDE.md: total_cost = 1.01 x (kalshi_ask + poly_ask))."""
+
+    def test_fee_blind_zone_is_not_flagged_as_arb(self):
+        # raw 0.955 < 0.96 but fee-inclusive 0.9646 >= 0.96 -> not an arb
+        kp, pp = _match_inputs(k_yes=0.50, p_no=0.455)
+        self.assertEqual(wm.match_props(kp, pp), [])
+
+    def test_total_cost_includes_fees(self):
+        kp, pp = _match_inputs(k_yes=0.50, p_no=0.40)
+        arbs = wm.match_props(kp, pp)
+        self.assertEqual(len(arbs), 1)
+        self.assertAlmostEqual(arbs[0]["total_cost"], round(0.90 * 1.01, 4))
+
+    def test_rest_confirm_applies_fees_too(self):
+        # WS and REST agree on 0.50; raw total 0.955 passes the old check but
+        # fee-inclusive it must be ghost_rejected, not confirmed.
+        import asyncio
+
+        wm._prop_arb_tracker = wm.PropArbTracker()
+        arb = {
+            "direction": "Kalshi YES + Poly NO", "kalshi_ticker": "KXMLBHIT-TEST-1",
+            "leg1": "Kalshi YES", "leg1_ask": 0.50, "leg2": "Poly NO", "leg2_ask": 0.455,
+            "event_title": "X", "game_start": "2026-07-01T23:00:00Z",
+            "player_name": "A B", "stat_type": "hits", "line": 2,
+            "total_cost": 0.955, "gap_cents": 0.5, "poly_smt": "baseball_player_hits",
+            "suspicious": False, "poly_ws_yes_ask": None, "poly_ws_no_ask": 0.455,
+        }
+        logged = []
+
+        class _Resp:
+            def raise_for_status(self): pass
+            def json(self): return {"market": {"yes_ask_dollars": "0.5000"}}
+
+        with patch.object(wm, "log_event", logged.append), \
+             patch.object(wm.requests, "get", lambda *a, **k: _Resp()):
+            asyncio.run(wm._rest_confirm_and_emit(arb, "2026-07-01T22:00:00+00:00"))
+
+        self.assertEqual(wm._prop_arb_tracker.active_count(), 0)
+        self.assertEqual([e["event"] for e in logged], ["ghost_rejected"])
+        self.assertEqual(logged[0]["reason"], "threshold_not_met_after_rest")
+
+
 class TestKalshiTickTriggersPropsCheck(unittest.TestCase):
     """Fix C: a Kalshi-side price change must fire the props arb check
     immediately — not wait up to 30s for the next Poly WS (CDN) update."""

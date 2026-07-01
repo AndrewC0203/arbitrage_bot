@@ -616,13 +616,16 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
         k_yes, k_no = kp["yes_ask"], kp["no_ask"]
         p_yes, p_no = pp["yes_ask"], pp["no_ask"]
 
-        for direction, leg1_name, leg1_ask, leg2_name, leg2_ask in [
-            ("Poly YES + Kalshi NO", "Poly YES", p_yes, "Kalshi NO", k_no),
-            ("Kalshi YES + Poly NO", "Kalshi YES", k_yes, "Poly NO", p_no),
+        for direction, leg1_name, leg1_ask, leg1_fee_rate, leg2_name, leg2_ask, leg2_fee_rate in [
+            ("Poly YES + Kalshi NO", "Poly YES", p_yes, POLYMARKET_TAKER_FEE_RATE,
+             "Kalshi NO", k_no, KALSHI_TAKER_FEE_RATE),
+            ("Kalshi YES + Poly NO", "Kalshi YES", k_yes, KALSHI_TAKER_FEE_RATE,
+             "Poly NO", p_no, POLYMARKET_TAKER_FEE_RATE),
         ]:
             if leg1_ask is None or leg2_ask is None:
                 continue
-            total = leg1_ask + leg2_ask
+            # Per-leg taker fees (CLAUDE.md: total_cost = asks + 1% of each ask)
+            total = leg1_ask * (1 + leg1_fee_rate) + leg2_ask * (1 + leg2_fee_rate)
             if total >= ARB_THRESHOLD:
                 continue
             # Flag suspiciously deep gaps — likely ghost/stale price on one leg
@@ -699,9 +702,10 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
             })
             return
 
-        # Recompute against the same threshold match_props uses (raw ask sum vs ARB_THRESHOLD)
+        # Recompute with the same fee-inclusive formula match_props uses
         poly_ask = arb["leg2_ask"] if "Kalshi" in arb["leg1"] else arb["leg1_ask"]
-        total = confirmed_k_ask + poly_ask
+        total = (confirmed_k_ask * (1 + KALSHI_TAKER_FEE_RATE)
+                 + poly_ask * (1 + POLYMARKET_TAKER_FEE_RATE))
 
         if total >= ARB_THRESHOLD:
             log_event({
@@ -712,7 +716,8 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
                 "direction": direction,
                 "ws_kalshi_ask": ws_kalshi_ask,
                 "rest_kalshi_ask": confirmed_k_ask,
-                "ws_total": round(ws_kalshi_ask + poly_ask, 4),
+                "ws_total": round(ws_kalshi_ask * (1 + KALSHI_TAKER_FEE_RATE)
+                                  + poly_ask * (1 + POLYMARKET_TAKER_FEE_RATE), 4),
                 "rest_total": round(total, 4),
                 "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
                 "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
