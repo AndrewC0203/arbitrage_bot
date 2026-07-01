@@ -166,6 +166,96 @@ class TestWsTickerPriceCache(unittest.TestCase):
         self.assertGreater(wm._price_cache._cache[PROP_TICKER]["updated_at"], before)
 
 
+def _rest_prop(ticker, series="KXMLBHIT", yes=0.9, no=0.2, game_dt=None):
+    """Shape returned by fetch_kalshi_props."""
+    return {
+        "series": series, "ticker": ticker,
+        "player_name": "A B", "player_norm": "a b", "line": 1,
+        "yes_ask": yes, "no_ask": no,
+        "game_dt_utc": game_dt or datetime.now(timezone.utc) + timedelta(hours=2),
+    }
+
+
+def _poly_event(slug="s1", active=True, closed=False, game_start=None, yes="0.50", no="0.55"):
+    """Shape returned by the gateway /v1/search props endpoint."""
+    gs = game_start or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "title": "MLB Player Props",
+        "markets": [{
+            "sportsMarketType": "baseball_player_hits",
+            "active": active, "closed": closed, "archived": False,
+            "gameStartTime": gs,
+            "metadata": {"playerName": "A B"},
+            "slug": slug, "line": 2,
+            "marketSides": [
+                {"long": True, "quote": {"value": yes}},
+                {"long": False, "quote": {"value": no}},
+            ],
+        }],
+    }
+
+
+class TestKalshiCacheEviction(unittest.TestCase):
+    """Fix D: REST re-seed is authoritative — closed/quoteless markets must not
+    linger in the cache serving ghost prices for up to 300s."""
+
+    def _tickers(self, cache):
+        return sorted(e["ticker"] for e in cache.as_props_list(datetime.now(timezone.utc)))
+
+    def test_reseed_evicts_markets_missing_from_fetched_series(self):
+        cache = KalshiPriceCache()
+        cache.seed_from_rest([_rest_prop("K-A"), _rest_prop("K-B")],
+                             authoritative_series={"KXMLBHIT"})
+        # K-B settled; the next status=open pull no longer returns it
+        cache.seed_from_rest([_rest_prop("K-A")], authoritative_series={"KXMLBHIT"})
+        self.assertEqual(self._tickers(cache), ["K-A"])
+
+    def test_reseed_keeps_markets_when_series_fetch_failed(self):
+        cache = KalshiPriceCache()
+        cache.seed_from_rest([_rest_prop("K-A"), _rest_prop("K-B")],
+                             authoritative_series={"KXMLBHIT"})
+        # whole fetch failed → nothing authoritative → evict nothing
+        cache.seed_from_rest([], authoritative_series=set())
+        self.assertEqual(self._tickers(cache), ["K-A", "K-B"])
+
+    def test_reseed_overwrites_prices_authoritatively(self):
+        cache = KalshiPriceCache()
+        cache.seed_from_rest([_rest_prop("K-A", yes=0.9, no=0.2)],
+                             authoritative_series={"KXMLBHIT"})
+        # REST now says the YES side has no live quote — must not keep stale 0.9
+        cache.seed_from_rest([_rest_prop("K-A", yes=None, no=0.25)],
+                             authoritative_series={"KXMLBHIT"})
+        entry = cache._cache["K-A"]
+        self.assertIsNone(entry["yes_ask"])
+        self.assertEqual(entry["no_ask"], 0.25)
+
+
+class TestPolyPropsMapUpdate(unittest.TestCase):
+    """Fix D: poly props map update evicts markets that went closed/inactive,
+    and the match list filters out entries with a stale updated_at."""
+
+    def setUp(self):
+        wm._poly_ws_props_token_map = {}
+
+    def test_active_market_is_stored(self):
+        wm._update_poly_props_map([_poly_event(slug="s1")])
+        self.assertIn("s1", wm._poly_ws_props_token_map)
+
+    def test_market_gone_closed_is_evicted_from_map(self):
+        wm._update_poly_props_map([_poly_event(slug="s1")])
+        wm._update_poly_props_map([_poly_event(slug="s1", closed=True)])
+        self.assertNotIn("s1", wm._poly_ws_props_token_map)
+
+    def test_stale_poly_entries_excluded_from_match_list(self):
+        wm._update_poly_props_map([_poly_event(slug="fresh"), _poly_event(slug="stale")])
+        wm._poly_ws_props_token_map["stale"]["updated_at"] = (
+            datetime.now(timezone.utc) - timedelta(seconds=400)
+        )
+        # entries must also carry a slug so staleness can be traced
+        listed = {p["slug"] for p in wm._reconstruct_poly_props_list()}
+        self.assertEqual(listed, {"fresh"})
+
+
 class TestKalshiTickTriggersPropsCheck(unittest.TestCase):
     """Fix C: a Kalshi-side price change must fire the props arb check
     immediately — not wait up to 30s for the next Poly WS (CDN) update."""

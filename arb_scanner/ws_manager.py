@@ -420,9 +420,22 @@ class KalshiPriceCache:
             entry["updated_at"] = datetime.now(timezone.utc)
         return touched
 
-    def seed_from_rest(self, props: list[dict]) -> None:
+    def seed_from_rest(self, props: list[dict], authoritative_series: Optional[set] = None) -> None:
+        """
+        Merge a REST pull into the cache. REST is authoritative for the series
+        it successfully fetched: prices are overwritten (None means "no live
+        quote", not "keep the old price") and markets that vanished from the
+        status=open listing (settled/closed) are evicted — otherwise they
+        linger up to _CACHE_STALE_SECONDS serving ghost prices.
+        """
         self.purge_old_date(datetime.now(timezone.utc).date())
         now = datetime.now(timezone.utc)
+        if authoritative_series:
+            new_tickers = {kp["ticker"] for kp in props}
+            self._cache = {
+                t: e for t, e in self._cache.items()
+                if e["series"] not in authoritative_series or t in new_tickers
+            }
         for kp in props:
             ticker = kp["ticker"]
             if ticker not in self._cache:
@@ -439,10 +452,8 @@ class KalshiPriceCache:
                 }
             else:
                 entry = self._cache[ticker]
-                if kp["yes_ask"] is not None:
-                    entry["yes_ask"] = kp["yes_ask"]
-                if kp["no_ask"] is not None:
-                    entry["no_ask"] = kp["no_ask"]
+                entry["yes_ask"] = kp["yes_ask"]
+                entry["no_ask"] = kp["no_ask"]
                 entry["updated_at"] = now
 
     def purge_old_date(self, today: "datetime.date") -> None:
@@ -1003,21 +1014,35 @@ async def fetch_polymarket(session: aiohttp.ClientSession) -> tuple[list[dict], 
     return markets, fetched_at
 
 
-def fetch_kalshi_props(today_utc: "datetime.date") -> list[dict]:
+def fetch_kalshi_props(today_utc: "datetime.date") -> tuple[list[dict], set]:
+    """
+    Fetch open prop markets for all series. Returns (props, ok_series) where
+    ok_series is the set of series fetched completely (all pages) — only those
+    are authoritative for cache eviction in seed_from_rest().
+    """
     valid_dates = {today_utc, today_utc - timedelta(days=1)}
     results = []
+    ok_series: set = set()
     for series in SERIES_TO_SMT:
+        markets: list[dict] = []
+        cursor = None
         try:
-            resp = requests.get(
-                f"{KALSHI_BASE}/markets",
-                params={"series_ticker": series, "status": "open", "limit": 200},
-                timeout=REST_TIMEOUT,
-            )
-            resp.raise_for_status()
+            while True:
+                params = {"series_ticker": series, "status": "open", "limit": 200}
+                if cursor:
+                    params["cursor"] = cursor
+                resp = requests.get(f"{KALSHI_BASE}/markets", params=params, timeout=REST_TIMEOUT)
+                resp.raise_for_status()
+                data = resp.json()
+                markets.extend(data.get("markets", []))
+                cursor = data.get("cursor")
+                if not cursor or not data.get("markets"):
+                    break
         except requests.RequestException as exc:
             print(f"[WARN] Kalshi {series} fetch failed: {exc}", file=sys.stderr)
             continue
-        for m in resp.json().get("markets", []):
+        ok_series.add(series)
+        for m in markets:
             ticker = m.get("ticker", "")
             game_dt = _kalshi_game_dt_utc(ticker)
             if game_dt is None or game_dt.date() not in valid_dates:
@@ -1040,7 +1065,7 @@ def fetch_kalshi_props(today_utc: "datetime.date") -> list[dict]:
                 "no_ask": no_ask,
                 "game_dt_utc": game_dt,
             })
-    return results
+    return results, ok_series
 
 
 def fetch_poly_props(today_str: str) -> list[dict]:
@@ -1319,8 +1344,8 @@ async def _kalshi_props_reconcile_once() -> None:
     loop = asyncio.get_running_loop()
     today_utc = datetime.now(timezone.utc).date()
     try:
-        props = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
-        _price_cache.seed_from_rest(props)
+        props, ok_series = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
+        _price_cache.seed_from_rest(props, authoritative_series=ok_series)
     except Exception as exc:
         print(f"[KALSHI-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
 
@@ -1493,14 +1518,90 @@ async def _seed_one_ml_league(
     return slugs
 
 
+def _fetch_poly_props_events() -> list:
+    """Blocking REST fetch of props search results. Run in an executor."""
+    events = []
+    for q in ["mlb will record at least", "nba will record", "player points", "player rebounds"]:
+        try:
+            resp = requests.get(
+                f"{POLYMARKET_US_GATEWAY}/v1/search",
+                params={"query": q, "limit": 200},
+                timeout=REST_TIMEOUT,
+            )
+            resp.raise_for_status()
+            events.extend(resp.json().get("events", []))
+        except Exception:
+            pass
+    return events
+
+
+def _update_poly_props_map(events: list) -> list[str]:
+    """
+    Parse search events into _poly_ws_props_token_map. REST is authoritative:
+    markets seen closed/inactive/date-expired are evicted from the map so they
+    stop serving ghost prices. Markets merely absent from search results are
+    left alone (they may still stream via WS). Returns stored slugs.
+    """
+    now = datetime.now(timezone.utc)
+    today_str = now.date().strftime("%Y-%m-%d")
+    supported_smts = set(SERIES_TO_SMT.values())
+    today = date.fromisoformat(today_str)
+    valid_dates = {today_str, (today - timedelta(days=1)).isoformat()}
+    kept: list[str] = []
+
+    for event in events:
+        event_title = event.get("title", "")
+        for m in event.get("markets", []):
+            try:
+                smt = m.get("sportsMarketType", "")
+                if smt not in supported_smts:
+                    continue
+                slug = m.get("slug", "")
+                if not slug:
+                    continue
+                game_start = m.get("gameStartTime", "") or ""
+                dead = (
+                    not m.get("active") or m.get("closed") or m.get("archived")
+                    or game_start[:10] not in valid_dates
+                )
+                if dead:
+                    _poly_ws_props_token_map.pop(slug, None)
+                    continue
+                metadata = m.get("metadata") or {}
+                player_name = metadata.get("playerName", "")
+                if not player_name:
+                    continue
+                yes_ask = no_ask = None
+                for side in m.get("marketSides", []):
+                    ask = _poly_ask(side)
+                    if side.get("long") is True:
+                        yes_ask = ask
+                    elif side.get("long") is False:
+                        no_ask = ask
+                _poly_ws_props_token_map[slug] = {
+                    "slug": slug,
+                    "smt": smt,
+                    "player_name": player_name,
+                    "player_norm": normalize_name(player_name),
+                    "line": m.get("line"),
+                    "game_start": game_start,
+                    "event_title": event_title,
+                    "yes_ask": yes_ask,
+                    "no_ask": no_ask,
+                    "updated_at": now,
+                }
+                kept.append(slug)
+            except (TypeError, ValueError, KeyError):
+                continue
+    return kept
+
+
 async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[str], list[str]]:
     """
     Fetch Polymarket markets via REST, populate slug-keyed WS maps, and return
     (ml_slugs, props_slugs) for WS subscription.
     Called on startup and on every WS reconnect.
     """
-    global _poly_ws_ml_token_map, _poly_ws_props_token_map
-
     now = datetime.now(timezone.utc)
 
     # ── Moneyline markets — all league slugs fetched concurrently ──
@@ -1518,73 +1619,33 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
 
     # ── Props markets ──
     loop = asyncio.get_running_loop()
-    today_str = now.date().strftime("%Y-%m-%d")
-    supported_smts = set(SERIES_TO_SMT.values())
-    today = date.fromisoformat(today_str)
-    valid_dates = {today_str, (today - timedelta(days=1)).isoformat()}
-
     try:
-        def _fetch_props_raw() -> list:
-            events = []
-            for q in ["mlb will record at least", "nba will record", "player points", "player rebounds"]:
-                try:
-                    resp = requests.get(
-                        f"{POLYMARKET_US_GATEWAY}/v1/search",
-                        params={"query": q, "limit": 200},
-                        timeout=REST_TIMEOUT,
-                    )
-                    resp.raise_for_status()
-                    events.extend(resp.json().get("events", []))
-                except Exception:
-                    pass
-            return events
-
-        events = await loop.run_in_executor(None, _fetch_props_raw)
-
-        for event in events:
-            event_title = event.get("title", "")
-            for m in event.get("markets", []):
-                try:
-                    smt = m.get("sportsMarketType", "")
-                    if smt not in supported_smts:
-                        continue
-                    if not m.get("active") or m.get("closed") or m.get("archived"):
-                        continue
-                    game_start = m.get("gameStartTime", "") or ""
-                    if game_start[:10] not in valid_dates:
-                        continue
-                    metadata = m.get("metadata") or {}
-                    player_name = metadata.get("playerName", "")
-                    if not player_name:
-                        continue
-                    slug = m.get("slug", "")
-                    if not slug:
-                        continue
-                    yes_ask = no_ask = None
-                    for side in m.get("marketSides", []):
-                        ask = _poly_ask(side)
-                        if side.get("long") is True:
-                            yes_ask = ask
-                        elif side.get("long") is False:
-                            no_ask = ask
-                    _poly_ws_props_token_map[slug] = {
-                        "smt": smt,
-                        "player_name": player_name,
-                        "player_norm": normalize_name(player_name),
-                        "line": m.get("line"),
-                        "game_start": game_start,
-                        "event_title": event_title,
-                        "yes_ask": yes_ask,
-                        "no_ask": no_ask,
-                        "updated_at": now,
-                    }
-                    props_slugs.append(slug)
-                except (TypeError, ValueError, KeyError):
-                    continue
+        events = await loop.run_in_executor(None, _fetch_poly_props_events)
+        async with _poly_ws_lock:
+            props_slugs = _update_poly_props_map(events)
     except Exception as exc:
         print(f"[POLY-WS] Props REST seed error: {exc}", file=sys.stderr)
 
     return ml_slugs, props_slugs
+
+
+_POLY_PROPS_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
+
+async def _poly_props_reconcile_task() -> None:
+    """
+    Periodically re-pull Polymarket props via REST: refreshes prices/flags,
+    evicts markets that went closed, and bumps updated_at so live markets pass
+    the staleness filter (mirrors _kalshi_props_reconciliation_task).
+    """
+    loop = asyncio.get_running_loop()
+    while True:
+        await asyncio.sleep(_POLY_PROPS_RECONCILE_INTERVAL)
+        try:
+            events = await loop.run_in_executor(None, _fetch_poly_props_events)
+            async with _poly_ws_lock:
+                _update_poly_props_map(events)
+        except Exception as exc:
+            print(f"[POLY-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
 
 
 def _rebuild_poly_ml_cache() -> None:
@@ -1667,9 +1728,15 @@ def _reconstruct_poly_props_list() -> list[dict]:
     """Build poly_props list from WS cache for match_props() consumption."""
     now = datetime.now(timezone.utc)
     stale_game_cutoff = now - timedelta(hours=4)
+    # Same freshness rule as the Kalshi side (rule 8): an entry neither the WS
+    # nor the 60s REST reconcile has touched recently is a ghost — skip it.
+    stale_price_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
     result = []
     for entry in _poly_ws_props_token_map.values():
         if entry.get("yes_ask") is None and entry.get("no_ask") is None:
+            continue
+        updated = entry.get("updated_at")
+        if updated is None or updated < stale_price_cutoff:
             continue
         try:
             game_dt = datetime.fromisoformat(entry["game_start"].replace("Z", "+00:00"))
@@ -1678,6 +1745,7 @@ def _reconstruct_poly_props_list() -> list[dict]:
         except (ValueError, KeyError):
             pass
         result.append({
+            "slug": entry.get("slug"),
             "smt": entry["smt"],
             "player_name": entry["player_name"],
             "player_norm": entry["player_norm"],
@@ -1889,8 +1957,8 @@ async def main_ws(api_key_id: str, private_key) -> None:
     loop = asyncio.get_running_loop()
     today_utc = datetime.now(timezone.utc).date()
     try:
-        initial_props = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
-        _price_cache.seed_from_rest(initial_props)
+        initial_props, initial_ok = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
+        _price_cache.seed_from_rest(initial_props, authoritative_series=initial_ok)
         print(f"[INIT] Seeded {len(initial_props)} prop tickers into price cache.", file=sys.stderr)
     except Exception as exc:
         print(f"[WARN] Initial prop REST seed failed: {exc}. WS will populate cache.", file=sys.stderr)
@@ -1904,6 +1972,7 @@ async def main_ws(api_key_id: str, private_key) -> None:
         _kalshi_ws_task(api_key_id, private_key),
         _poly_ws_task(),
         _kalshi_props_reconciliation_task(),
+        _poly_props_reconcile_task(),
         # _poly_ml_polling_task(),    # kept for side-by-side testing; swap with _poly_ws_task() above
         # _poly_props_polling_task(), # kept for side-by-side testing
     )
