@@ -690,22 +690,7 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
         print(f"\n{'='*70}")
         print(f"  PROP ARB [REST-CONFIRMED] — {timestamp}")
         print(f"{'='*70}")
-        print(f"\n--- {confirmed_arb['event_title']} (game: {confirmed_arb['game_start']}) ---")
-        print(
-            f"  [NEW][{confirmed_arb['gap_cents']:.1f}¢] {confirmed_arb['player_name']} "
-            f"{confirmed_arb['line']}+ {confirmed_arb['stat_type']}: "
-            f"{confirmed_arb['leg1']}={confirmed_arb['leg1_ask']:.2f} + "
-            f"{confirmed_arb['leg2']}={confirmed_arb['leg2_ask']:.2f} = "
-            f"${confirmed_arb['total_cost']:.2f}"
-        )
-        print(f"         Kalshi: {confirmed_arb['kalshi_ticker']}")
-        log_event({
-            "event": "prop_arb",
-            "timestamp": timestamp,
-            **confirmed_arb,
-            "poly_ws_yes_ask": confirmed_arb.get("poly_ws_yes_ask"),
-            "poly_ws_no_ask": confirmed_arb.get("poly_ws_no_ask"),
-        })
+        _print_and_log_prop_open(confirmed_arb, timestamp)
 
     except Exception as exc:
         log_event({
@@ -783,6 +768,27 @@ class PropArbTracker:
 _prop_arb_tracker = PropArbTracker()
 
 
+def _print_and_log_prop_open(arb: dict, timestamp: str) -> None:
+    """Shared formatter for a single confirmed prop arb open — print + log_event."""
+    ghost_tag = " [GHOST?]" if arb.get("suspicious") else ""
+    print(f"\n--- {arb['event_title']} (game: {arb['game_start']}) ---")
+    print(
+        f"  [NEW][{arb['gap_cents']:.1f}¢]{ghost_tag} {arb['player_name']} "
+        f"{arb['line']}+ {arb['stat_type']}: "
+        f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
+        f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
+        f"${arb['total_cost']:.2f}"
+    )
+    print(f"         Kalshi: {arb['kalshi_ticker']}")
+    log_event({
+        "event": "prop_arb",
+        "timestamp": timestamp,
+        **arb,
+        "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+        "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+    })
+
+
 def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
     """
     Print prop arb changes (new/updated/closed) and log them.
@@ -795,21 +801,27 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
         print(f"\n{'='*70}")
         print(f"  PROP ARB — {timestamp}")
         print(f"{'='*70}")
-        current_game = None
         for status, arb in new_or_changed:
-            tag = "NEW" if status == "opened" else "UPD"
             ghost_tag = " [GHOST?]" if arb.get("suspicious") else ""
-            if arb["event_title"] != current_game:
-                current_game = arb["event_title"]
+            if status == "opened":
+                _print_and_log_prop_open(arb, timestamp)
+            else:
                 print(f"\n--- {arb['event_title']} (game: {arb['game_start']}) ---")
-            print(
-                f"  [{tag}][{arb['gap_cents']:.1f}¢]{ghost_tag} {arb['player_name']} "
-                f"{arb['line']}+ {arb['stat_type']}: "
-                f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
-                f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
-                f"${arb['total_cost']:.2f}"
-            )
-            print(f"         Kalshi: {arb['kalshi_ticker']}")
+                print(
+                    f"  [UPD][{arb['gap_cents']:.1f}¢]{ghost_tag} {arb['player_name']} "
+                    f"{arb['line']}+ {arb['stat_type']}: "
+                    f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
+                    f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
+                    f"${arb['total_cost']:.2f}"
+                )
+                print(f"         Kalshi: {arb['kalshi_ticker']}")
+                log_event({
+                    "event": "prop_arb",
+                    "timestamp": timestamp,
+                    **arb,
+                    "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+                    "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+                })
 
     # Print closed arbs
     if closed:
@@ -843,28 +855,18 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
             print("  No prop arbs remaining.")
         print(f"{'─'*70}")
 
-    if not new_or_changed and not closed:
-        return
-
-    with open(LOG_FILE, "a") as f:
-        for _, arb in new_or_changed:
-            f.write(json.dumps({
-                "event": "prop_arb",
-                "timestamp": timestamp,
-                **arb,
-                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-            }) + "\n")
-        for rec in closed:
-            arb = rec["arb"]
-            f.write(json.dumps({
-                "event": "prop_arb_closed",
-                "timestamp": timestamp,
-                "opened_at": rec["opened_at"],
-                **arb,
-                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-            }) + "\n")
+    # new_or_changed events are already logged by _print_and_log_prop_open (opened)
+    # or log_event (updated) above. Only closures need logging here.
+    for rec in closed:
+        arb = rec["arb"]
+        log_event({
+            "event": "prop_arb_closed",
+            "timestamp": timestamp,
+            "opened_at": rec["opened_at"],
+            **arb,
+            "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+            "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+        })
 
 
 # ─── REST Fetch Functions ──────────────────────────────────────────────────────

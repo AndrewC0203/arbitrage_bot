@@ -14,6 +14,7 @@ Run: python -m pytest test_scanner.py -v
 
 import time
 import unittest
+from unittest.mock import patch
 
 from ws_manager import (
     ARB_THRESHOLD,
@@ -21,6 +22,7 @@ from ws_manager import (
     POLYMARKET_TAKER_FEE_RATE,
     OpportunityTracker,
     PropArbTracker,
+    _print_and_log_prop_open,
     kalshi_is_moneyline,
     normalize_name,
     team_code,
@@ -962,10 +964,24 @@ class TestPropArbTracker(unittest.TestCase):
     def test_PAT05_mark_opened_idempotent_if_already_tracked(self):
         arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
         self.tracker.update([arb], self.ts)
-        # Calling mark_opened on the same key (e.g. concurrent WS ticks) should be a no-op
-        inserted = self.tracker.mark_opened(arb, self.ts)
-        assert inserted is False
-        assert self.tracker.active_count() == 1
+        # mark_opened on an already-tracked key must be a no-op: False return, no log written.
+        # The caller (_rest_confirm_and_emit) guards print/log on the return value, so if that
+        # guard ever breaks, log_event being called here is the signal.
+        with patch("ws_manager.log_event") as mock_log:
+            inserted = self.tracker.mark_opened(arb, self.ts)
+            assert inserted is False
+            assert self.tracker.active_count() == 1
+            # _print_and_log_prop_open must NOT be called for the duplicate
+            mock_log.assert_not_called()
+
+    def test_PAT05b_print_and_log_prop_open_called_on_fresh_insert(self):
+        arb = _prop_arb("KXMLBHIT-PLAYER-A", "Kalshi YES + Poly NO")
+        with patch("ws_manager.log_event") as mock_log:
+            _print_and_log_prop_open(arb, self.ts)
+            mock_log.assert_called_once()
+            event = mock_log.call_args[0][0]
+            assert event["event"] == "prop_arb"
+            assert event["kalshi_ticker"] == "KXMLBHIT-PLAYER-A"
 
     def test_PAT06_update_after_mark_opened_closes_correctly(self):
         # After mark_opened adds arb_c, the next full update that excludes arb_c should close it.
