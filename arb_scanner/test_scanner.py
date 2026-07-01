@@ -1005,6 +1005,8 @@ class TestPropArbTracker(unittest.TestCase):
 # for delta subscription.
 
 import asyncio
+import itertools
+import json
 from datetime import datetime, timedelta, timezone
 
 import ws_manager as wm
@@ -1167,6 +1169,88 @@ class TestPolyUnsubscribedSlugs(unittest.TestCase):
     def test_DS02_new_slugs_in_both_maps_returned(self):
         new = _poly_unsubscribed_slugs({"ml-a"})
         assert sorted(new) == ["ml-b", "prop-a"]
+
+
+class _FakeWs:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, frame):
+        self.sent.append(json.loads(frame))
+
+
+class TestPolyDeltaSubscribeLoop(unittest.TestCase):
+    """_poly_delta_subscribe_loop: subscribes map slugs missing from the live set."""
+
+    def setUp(self):
+        self._saved_ml = dict(wm._poly_ws_ml_token_map)
+        self._saved_props = dict(wm._poly_ws_props_token_map)
+        self._saved_interval = wm._POLY_DELTA_SUB_INTERVAL
+        self._saved_max = wm._POLY_MAX_SUB_FRAMES
+        wm._POLY_DELTA_SUB_INTERVAL = 0.01
+        wm._poly_ws_ml_token_map.clear()
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_ml_token_map["ml-a"] = {"slug": "ml-a"}
+
+    def tearDown(self):
+        wm._POLY_DELTA_SUB_INTERVAL = self._saved_interval
+        wm._POLY_MAX_SUB_FRAMES = self._saved_max
+        wm._poly_ws_ml_token_map.clear()
+        wm._poly_ws_ml_token_map.update(self._saved_ml)
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_props_token_map.update(self._saved_props)
+
+    def _run(self, coro, timeout=1.0):
+        async def bounded():
+            task = asyncio.ensure_future(coro)
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+            except asyncio.TimeoutError:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        asyncio.run(bounded())
+
+    def test_DS03_sends_subscribe_frame_for_new_slugs(self):
+        ws = _FakeWs()
+        subscribed = {"ml-a"}
+
+        async def scenario():
+            loop_task = asyncio.ensure_future(
+                wm._poly_delta_subscribe_loop(ws, subscribed, itertools.count(1))
+            )
+            await asyncio.sleep(0.05)  # a few idle iterations
+            wm._poly_ws_props_token_map["prop-new"] = {"slug": "prop-new"}
+            await asyncio.sleep(0.05)
+            loop_task.cancel()
+            try:
+                await loop_task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(scenario())
+        assert len(ws.sent) == 1
+        frame = ws.sent[0]["subscribe"]
+        assert frame["subscriptionType"] == "SUBSCRIPTION_TYPE_MARKET_DATA_LITE"
+        assert frame["marketSlugs"] == ["prop-new"]
+        assert "prop-new" in subscribed
+
+    def test_DS04_raises_to_consolidate_at_frame_cap(self):
+        wm._POLY_MAX_SUB_FRAMES = 1  # initial subscribe already counts as frame 1
+        ws = _FakeWs()
+        wm._poly_ws_props_token_map["prop-new"] = {"slug": "prop-new"}
+
+        async def scenario():
+            with self.assertRaises(RuntimeError):
+                await asyncio.wait_for(
+                    wm._poly_delta_subscribe_loop(ws, {"ml-a"}, itertools.count(1)),
+                    timeout=1.0,
+                )
+
+        asyncio.run(scenario())
+        assert ws.sent == []
 
 
 if __name__ == "__main__":
