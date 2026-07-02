@@ -301,19 +301,28 @@ class KalshiOrderBook:
         """Clear per-sid seq state. Call on every (re)connect before subscribing."""
         self._sid_seq.clear()
 
-    def apply_snapshot(self, sid: Optional[int], seq: Optional[int], payload: dict) -> None:
-        """Replace book with full snapshot from an orderbook_snapshot payload."""
+    def apply_snapshot(self, sid: Optional[int], seq: Optional[int], payload: dict) -> bool:
+        """
+        Replace book with full snapshot from an orderbook_snapshot payload.
+        Returns False on a seq gap — the snapshot only resets THIS ticker's
+        book, but seq is per-sid across all tickers, so the missed messages
+        may have been deltas for other tickers on the stream.
+        """
         if sid is not None and seq is not None:
-            self._sid_seq[sid] = seq  # snapshots reset the book, so gaps are moot
+            last = self._sid_seq.get(sid)
+            if last is not None and seq != last + 1:
+                return False
+            self._sid_seq[sid] = seq
         ticker = payload.get("market_ticker")
         if not ticker or ticker not in self._metadata:
-            return
+            return True
         self._books[ticker] = {
             "yes": self._parse_levels(payload.get("yes_dollars_fp")),
             "no": self._parse_levels(payload.get("no_dollars_fp")),
         }
         self._updated_at[ticker] = datetime.now(timezone.utc)
         self._recompute_best_ask(ticker)
+        return True
 
     def apply_delta(self, sid: Optional[int], seq: Optional[int], payload: dict) -> bool:
         """
@@ -397,22 +406,22 @@ class KalshiPriceCache:
         Apply a ticker-channel payload (the "msg" object, already unwrapped).
         Real feed carries yes_bid_dollars / yes_ask_dollars only — there is no
         NO-side field, so no_ask is derived as 1 - yes_bid. A present-but-
-        unusable price (0 or ≥1) means "no live quote" and clears the side
-        rather than preserving a stale price. Returns True if entry changed.
+        unusable price (explicit null, 0, or ≥1) means "no live quote" and
+        clears the side rather than preserving a stale price; only a MISSING
+        key leaves the side untouched. Returns True if entry changed.
         """
         if ticker not in self._cache:
             return False
         entry = self._cache[ticker]
         touched = False
 
-        raw_yes_ask = msg.get("yes_ask_dollars", msg.get("yes_ask"))
-        if raw_yes_ask is not None:
+        if "yes_ask_dollars" in msg or "yes_ask" in msg:
+            raw_yes_ask = msg.get("yes_ask_dollars", msg.get("yes_ask"))
             entry["yes_ask"] = self._parse_price(raw_yes_ask)
             touched = True
 
-        raw_yes_bid = msg.get("yes_bid_dollars", msg.get("yes_bid"))
-        if raw_yes_bid is not None:
-            yes_bid = self._parse_price(raw_yes_bid)
+        if "yes_bid_dollars" in msg or "yes_bid" in msg:
+            yes_bid = self._parse_price(msg.get("yes_bid_dollars", msg.get("yes_bid")))
             entry["no_ask"] = round(1.0 - yes_bid, 4) if yes_bid is not None else None
             touched = True
 
@@ -1250,7 +1259,8 @@ def _handle_ws_message(data: dict) -> bool:
 
     if msg_type == "orderbook_snapshot":
         if ticker:
-            _order_book.apply_snapshot(sid, seq, payload)
+            if not _order_book.apply_snapshot(sid, seq, payload):
+                return True
             check_arb_moneyline(utc_now())
 
     elif msg_type == "orderbook_delta":
@@ -1356,14 +1366,21 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
 # ─── Kalshi Props Reconciliation Task ────────────────────────────────────────
 
 _KALSHI_PROPS_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
+# Serializes the periodic reconcile against reconnect-spawned ones — without
+# this, an older fetch can land after a newer one and re-seed stale data.
+_kalshi_reconcile_lock = asyncio.Lock()
 
 async def _kalshi_props_reconcile_once() -> None:
     """Pull Kalshi props via REST and merge into _price_cache. Non-fatal on error."""
     loop = asyncio.get_running_loop()
     today_utc = datetime.now(timezone.utc).date()
     try:
-        props, ok_series = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
-        _price_cache.seed_from_rest(props, authoritative_series=ok_series)
+        async with _kalshi_reconcile_lock:
+            props, ok_series = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
+            _price_cache.seed_from_rest(props, authoritative_series=ok_series)
+        # Eviction can close arbs — re-check instead of waiting for the next
+        # WS tick, which may not come during quiet stretches.
+        _run_props_arb_check_from_ws()
     except Exception as exc:
         print(f"[KALSHI-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
 
@@ -1662,6 +1679,9 @@ async def _poly_props_reconcile_task() -> None:
             events = await loop.run_in_executor(None, _fetch_poly_props_events)
             async with _poly_ws_lock:
                 _update_poly_props_map(events)
+            # Eviction can close arbs — re-check instead of waiting for the
+            # next WS tick, which may not come during quiet stretches.
+            _run_props_arb_check_from_ws()
         except Exception as exc:
             print(f"[POLY-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
 
