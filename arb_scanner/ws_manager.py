@@ -579,9 +579,11 @@ class OpportunityTracker:
                 "timestamp_skew_warning": timestamp_skew_warning,
                 "market_name": last_m.get("market_name"),
                 "kalshi_ticker": last_m.get("kalshi_ticker", key[0]),
+                "kalshi_team": last_m.get("kalshi_team"),
                 "kalshi_ask": last_m.get("kalshi_ask"),
                 "kalshi_taker_fee": last_m.get("kalshi_taker_fee"),
                 "polymarket_slug": last_m.get("polymarket_slug", key[1]),
+                "polymarket_team": last_m.get("polymarket_team"),
                 "polymarket_ask": last_m.get("polymarket_ask"),
                 "polymarket_taker_fee": last_m.get("polymarket_taker_fee"),
                 "total_cost": last_m.get("total_cost"),
@@ -612,9 +614,13 @@ class OpportunityTracker:
             "timestamp_skew_warning": timestamp_skew_warning,
             "market_name": m["market_name"],
             "kalshi_ticker": m["kalshi_ticker"],
+            # ML arb = buy YES on kalshi_team at Kalshi + YES on the opposing
+            # polymarket_team at Poly — say which side is bought on which site
+            "kalshi_team": m.get("kalshi_team"),
             "kalshi_ask": m["kalshi_ask"],
             "kalshi_taker_fee": m["kalshi_taker_fee"],
             "polymarket_slug": m["polymarket_slug"],
+            "polymarket_team": m.get("polymarket_team"),
             "polymarket_ask": m["polymarket_ask"],
             "polymarket_taker_fee": m["polymarket_taker_fee"],
             "total_cost": m["total_cost"],
@@ -1424,7 +1430,11 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
             gap   = ev.get("gap_cents") or 0.0
             dur   = ev.get("duration_seconds")
             dur_s = f"{int(dur)}s" if dur is not None else "<1s"
-            lines.append(f"[WS] {name} — total=${total:.3f} gap={gap:.1f}¢ open {dur_s}")
+            k_ask = ev.get("kalshi_ask") or 0.0
+            p_ask = ev.get("polymarket_ask") or 0.0
+            sides = (f"Kalshi YES {ev.get('kalshi_team') or '?'}={k_ask:.2f} + "
+                     f"Poly YES {ev.get('polymarket_team') or '?'}={p_ask:.2f}")
+            lines.append(f"[WS] {name} — {sides} = ${total:.3f} gap={gap:.1f}¢ open {dur_s}")
         sys.stdout.write("\r" + " | ".join(lines)[:200].ljust(200) + "\r")
         sys.stdout.flush()
 
