@@ -131,6 +131,40 @@ class TestRealArbPassesThrough(GhostFilterBase):
         self.assertNotIn("suspicious", arb)
 
 
+class TestRestConfirmEdgeCap(GhostFilterBase):
+    """The REST confirm gate recomputes total from the REST ask — the edge cap
+    (F3) must apply to that recomputed gap too, or a stale-low REST price
+    reopens the fat-edge ghost class the WS-side filters just closed
+    (design success criterion 2: no open arb shows a >10c gap)."""
+
+    def test_rest_confirmed_fat_edge_is_ghost_rejected(self):
+        import asyncio
+
+        wm._prop_arb_tracker = wm.PropArbTracker()
+        # WS-priced arb passed the filters with a sane 5.55c gap...
+        arb = {
+            "direction": "Kalshi YES + Poly NO", "kalshi_ticker": "KXMLBHIT-EDGE-1",
+            "leg1": "Kalshi YES", "leg1_ask": 0.45, "leg2": "Poly NO", "leg2_ask": 0.45,
+            "event_title": "X", "game_start": "2026-07-02T02:10:00Z",
+            "player_name": "A B", "stat_type": "hits", "line": 1,
+            "total_cost": 0.909, "gap_cents": 5.55, "poly_smt": "baseball_player_hits",
+            "poly_ws_yes_ask": 0.56, "poly_ws_no_ask": 0.45,
+        }
+
+        class _Resp:
+            def raise_for_status(self): pass
+            # ...but REST says the Kalshi ask is 0.30: total 0.7575, gap 20.25c
+            def json(self): return {"market": {"yes_ask_dollars": "0.3000"}}
+
+        with patch.object(wm.requests, "get", lambda *a, **k: _Resp()):
+            asyncio.run(wm._rest_confirm_and_emit(arb, "2026-07-02T02:00:00+00:00"))
+
+        self.assertEqual(wm._prop_arb_tracker.active_count(), 0)
+        rejects = [e for e in self.events if e.get("event") == "ghost_rejected"]
+        self.assertEqual(len(rejects), 1)
+        self.assertEqual(rejects[0]["reason"], "edge_cap_after_rest")
+
+
 class TestGhostObservability(GhostFilterBase):
     """Counters, ghost_log.jsonl pattern records, and the hourly summary."""
 

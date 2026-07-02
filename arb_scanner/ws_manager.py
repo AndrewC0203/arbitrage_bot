@@ -888,6 +888,26 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
             })
             return
 
+        # F3 edge cap on the REST-recomputed gap too — a stale-low REST price
+        # must not reopen the fat-edge ghost class the WS-side filters gate
+        # (design success criterion 2: no open arb shows a >10¢ gap).
+        rest_gap_cents = round((ARB_THRESHOLD - total) * 100, 2)
+        if rest_gap_cents > GHOST_MAX_GAP_CENTS:
+            log_event({
+                "event": "ghost_rejected",
+                "timestamp": utc_now(),
+                "reason": "edge_cap_after_rest",
+                "kalshi_ticker": ticker,
+                "direction": direction,
+                "ws_kalshi_ask": ws_kalshi_ask,
+                "rest_kalshi_ask": confirmed_k_ask,
+                "rest_total": round(total, 4),
+                "rest_gap_cents": rest_gap_cents,
+                "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+                "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+            })
+            return
+
         # Confirmed — patch in the REST-verified Kalshi ask, insert directly into
         # tracker without diffing (_emit_prop_arbs([single_arb]) would close all others).
         confirmed_arb = dict(arb)
@@ -896,7 +916,7 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
         else:
             confirmed_arb["leg2_ask"] = confirmed_k_ask
         confirmed_arb["total_cost"] = round(total, 4)
-        confirmed_arb["gap_cents"] = round((ARB_THRESHOLD - total) * 100, 2)
+        confirmed_arb["gap_cents"] = rest_gap_cents
 
         if not _prop_arb_tracker.mark_opened(confirmed_arb, timestamp):
             return  # Race: already tracked from a concurrent WS tick — skip duplicate
