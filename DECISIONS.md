@@ -29,3 +29,15 @@ New Kalshi series added to `SERIES_TO_SMT`: `KXMLBKS` (strikeouts), `KXMLBHRR` (
 ## [2026-06-30] tennis tickers — switched KXATP/KXWTA to KXATPMATCH/KXWTAMATCH
 
 `KXATP`/`KXWTA` are tournament-winner outright series ("Will Sinner win the US Open?"). Polymarket's `tennis_match_winner` markets are H2H match markets ("Tsitsipas vs Djokovic"). These market types can never cross-match, producing 0 matches and 111 "no players extracted" errors. `KXATPMATCH`/`KXWTAMATCH` are the correct Kalshi H2H series (96 markets each, confirmed live against the API). Title format for the new series is "Will [Player] win the [A vs B]: [Round] match?" — one ticker per player per match. TennisMatcher was rewritten to extract the subject player via regex and match against Polymarket's `displayName` (full name) rather than the 6-char slug abbreviation, with a short-name guard (< 4 char last names require exact full-name equality to avoid false positives).
+
+## [2026-07-01] Kalshi WS v2 seq gap — chose full reconnect over per-ticker resubscribe
+
+Live captures show `seq` is per subscription (`sid`), not per ticker: one stream numbers snapshots and deltas across every ticker in that subscribe call. A gap therefore invalidates every book on the stream, and the old single-ticker resubscribe could not heal it. On gap the WS task now raises and reconnects, which re-seeds and gets fresh snapshots for everything. Costs a reconnect on what should be a rare event; per-sid resubscribe bookkeeping wasn't worth the complexity.
+
+## [2026-07-01] REST re-seeds are authoritative — chose overwrite+evict over merge-only-non-None
+
+`seed_from_rest` and `_update_poly_props_map` now overwrite prices (None = "no live quote") and evict markets that vanished from a complete `status=open` pull (Kalshi, now paginated) or were seen closed/inactive in search results (Poly). Tradeoff: a REST value can briefly regress a WS-fresh price by a few seconds; the WS re-corrects on the next tick. Chosen because stale/ghost prices were the dominant failure mode (1,362 `no_quote_from_rest` ghost rejections in the log). Poly markets merely *absent* from search results are NOT evicted — search is fuzzy and absence doesn't mean closed.
+
+## [2026-07-01] Doubleheader props — chose nearest-start-time (±30 min) over date-only key
+
+`match_props` keyed on (smt, player, line, date); doubleheaders repeat that key, so both Kalshi markets matched whichever Poly game survived the index overwrite. Candidates are now kept per key and paired by nearest game start within the same 30-minute window the moneyline matcher uses (rule 5). Kalshi prop ticker times match Poly `gameStartTime` exactly in live data, so the window is safe.

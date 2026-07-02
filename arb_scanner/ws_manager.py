@@ -251,15 +251,18 @@ def _poly_ws_auth_headers() -> dict:
 
 class KalshiOrderBook:
     """
-    In-memory YES-side order book for Kalshi moneyline tickers.
-    Keyed by ticker; tracks best_ask derived from live orderbook_delta messages.
-    Only the YES side is stored — moneyline arb buys YES on Kalshi.
+    In-memory two-sided order book for Kalshi moneyline tickers.
+    Kalshi WS v2 book levels are resting BIDS per side (yes_dollars_fp /
+    no_dollars_fp as [price_dollars, qty_fp] string pairs) — the best YES ask
+    is derived as 1 - max(NO bid). Seq numbers are per WS subscription (sid),
+    not per ticker.
     """
 
     def __init__(self):
-        self._books: dict[str, dict[int, int]] = {}       # ticker → {price_cents: qty}
+        # ticker → {"yes": {price_cents: qty}, "no": {price_cents: qty}}
+        self._books: dict[str, dict[str, dict[int, float]]] = {}
         self._best_ask: dict[str, Optional[float]] = {}   # ticker → best ask USD
-        self._seq: dict[str, int] = {}                    # ticker → last seq number
+        self._sid_seq: dict[int, int] = {}                # sid → last seq seen
         self._updated_at: dict[str, datetime] = {}
         self._metadata: dict[str, dict] = {}              # ticker → {title, raw}
 
@@ -280,64 +283,90 @@ class KalshiOrderBook:
                 result.append(ticker)
         return result
 
-    def apply_snapshot(self, ticker: str, seq: int, yes_levels: list) -> None:
-        """Replace book with full snapshot from orderbook_snapshot message."""
-        if ticker not in self._metadata:
-            return
-        book: dict[int, int] = {}
-        for entry in yes_levels:
+    @staticmethod
+    def _parse_levels(levels) -> dict[int, float]:
+        """Parse [["0.5800", "608.52"], ...] dollar-string levels → {cents: qty}."""
+        book: dict[int, float] = {}
+        for entry in levels or []:
             try:
-                price, qty = int(entry[0]), int(entry[1])
-                if qty > 0:
-                    book[price] = qty
+                price = round(float(entry[0]) * 100)
+                qty = float(entry[1])
             except (IndexError, TypeError, ValueError):
                 continue
-        self._books[ticker] = book
-        self._seq[ticker] = seq
+            if qty > 0 and 0 < price < 100:
+                book[price] = qty
+        return book
+
+    def reset_connection(self) -> None:
+        """Clear per-sid seq state. Call on every (re)connect before subscribing."""
+        self._sid_seq.clear()
+
+    def apply_snapshot(self, sid: Optional[int], seq: Optional[int], payload: dict) -> bool:
+        """
+        Replace book with full snapshot from an orderbook_snapshot payload.
+        Returns False on a seq gap — the snapshot only resets THIS ticker's
+        book, but seq is per-sid across all tickers, so the missed messages
+        may have been deltas for other tickers on the stream.
+        """
+        if sid is not None and seq is not None:
+            last = self._sid_seq.get(sid)
+            if last is not None and seq != last + 1:
+                return False
+            self._sid_seq[sid] = seq
+        ticker = payload.get("market_ticker")
+        if not ticker or ticker not in self._metadata:
+            return True
+        self._books[ticker] = {
+            "yes": self._parse_levels(payload.get("yes_dollars_fp")),
+            "no": self._parse_levels(payload.get("no_dollars_fp")),
+        }
         self._updated_at[ticker] = datetime.now(timezone.utc)
         self._recompute_best_ask(ticker)
+        return True
 
-    def apply_delta(self, ticker: str, seq: int, side: str, price: int, delta: int) -> bool:
+    def apply_delta(self, sid: Optional[int], seq: Optional[int], payload: dict) -> bool:
         """
-        Apply a single orderbook_delta. Returns False if seq gap detected
-        (caller should resubscribe to get a fresh snapshot).
-        Only processes the YES side.
+        Apply a single orderbook_delta payload. Returns False on a seq gap —
+        the caller must reconnect for fresh snapshots (a gap on a sid stream
+        invalidates every book on that stream, not just this ticker's).
         """
-        if ticker not in self._metadata:
+        if sid is not None and seq is not None:
+            last = self._sid_seq.get(sid)
+            if last is not None and seq != last + 1:
+                return False
+            self._sid_seq[sid] = seq
+
+        ticker = payload.get("market_ticker")
+        if not ticker or ticker not in self._metadata:
             return True  # unknown ticker, silently skip
 
-        # Seq gap check — only enforce after we have a baseline
-        if ticker in self._seq and seq != self._seq[ticker] + 1:
-            return False
-
-        if side != "yes":
-            # Track seq even for NO-side deltas so we don't false-gap later
-            if ticker in self._seq:
-                self._seq[ticker] = seq
+        side = payload.get("side")
+        if side not in ("yes", "no"):
             return True
-
-        book = self._books.setdefault(ticker, {})
         try:
-            price_int = int(price)
-            delta_int = int(delta)
+            price = round(float(payload.get("price_dollars")) * 100)
+            delta = float(payload.get("delta_fp"))
         except (TypeError, ValueError):
             return True
+        if not 0 < price < 100:
+            return True
 
-        new_qty = book.get(price_int, 0) + delta_int
+        book = self._books.setdefault(ticker, {"yes": {}, "no": {}})[side]
+        new_qty = book.get(price, 0.0) + delta
         if new_qty <= 0:
-            book.pop(price_int, None)
+            book.pop(price, None)
         else:
-            book[price_int] = new_qty
+            book[price] = new_qty
 
-        self._seq[ticker] = seq
         self._updated_at[ticker] = datetime.now(timezone.utc)
         self._recompute_best_ask(ticker)
         return True
 
     def _recompute_best_ask(self, ticker: str) -> None:
-        book = self._books.get(ticker, {})
-        positive = [p for p, q in book.items() if q > 0]
-        self._best_ask[ticker] = min(positive) / 100.0 if positive else None
+        # Book sides are resting bids: best YES ask = 1 - best NO bid.
+        no_bids = self._books.get(ticker, {}).get("no", {})
+        positive = [p for p, q in no_bids.items() if q > 0]
+        self._best_ask[ticker] = (100 - max(positive)) / 100.0 if positive else None
 
     def as_kalshi_markets(self, now: datetime) -> list[dict]:
         """Return normalized market dicts in the format matcher.match() expects."""
@@ -372,23 +401,50 @@ class KalshiPriceCache:
         self._cache: dict[str, dict] = {}
         self._cache_date: Optional["datetime.date"] = None
 
-    def update_from_ws(self, ticker: str, msg: dict) -> None:
-        raw_yes = msg["yes_ask"] if "yes_ask" in msg else msg.get("yes_ask_dollars")
-        raw_no  = msg["no_ask"]  if "no_ask"  in msg else msg.get("no_ask_dollars")
-        yes_ask = self._parse_price(raw_yes)
-        no_ask  = self._parse_price(raw_no)
+    def update_from_ws(self, ticker: str, msg: dict) -> bool:
+        """
+        Apply a ticker-channel payload (the "msg" object, already unwrapped).
+        Real feed carries yes_bid_dollars / yes_ask_dollars only — there is no
+        NO-side field, so no_ask is derived as 1 - yes_bid. A present-but-
+        unusable price (explicit null, 0, or ≥1) means "no live quote" and
+        clears the side rather than preserving a stale price; only a MISSING
+        key leaves the side untouched. Returns True if entry changed.
+        """
         if ticker not in self._cache:
-            return
+            return False
         entry = self._cache[ticker]
-        if yes_ask is not None:
-            entry["yes_ask"] = yes_ask
-        if no_ask is not None:
-            entry["no_ask"] = no_ask
-        entry["updated_at"] = datetime.now(timezone.utc)
+        touched = False
 
-    def seed_from_rest(self, props: list[dict]) -> None:
+        if "yes_ask_dollars" in msg or "yes_ask" in msg:
+            raw_yes_ask = msg.get("yes_ask_dollars", msg.get("yes_ask"))
+            entry["yes_ask"] = self._parse_price(raw_yes_ask)
+            touched = True
+
+        if "yes_bid_dollars" in msg or "yes_bid" in msg:
+            yes_bid = self._parse_price(msg.get("yes_bid_dollars", msg.get("yes_bid")))
+            entry["no_ask"] = round(1.0 - yes_bid, 4) if yes_bid is not None else None
+            touched = True
+
+        if touched:
+            entry["updated_at"] = datetime.now(timezone.utc)
+        return touched
+
+    def seed_from_rest(self, props: list[dict], authoritative_series: Optional[set] = None) -> None:
+        """
+        Merge a REST pull into the cache. REST is authoritative for the series
+        it successfully fetched: prices are overwritten (None means "no live
+        quote", not "keep the old price") and markets that vanished from the
+        status=open listing (settled/closed) are evicted — otherwise they
+        linger up to _CACHE_STALE_SECONDS serving ghost prices.
+        """
         self.purge_old_date(datetime.now(timezone.utc).date())
         now = datetime.now(timezone.utc)
+        if authoritative_series:
+            new_tickers = {kp["ticker"] for kp in props}
+            self._cache = {
+                t: e for t, e in self._cache.items()
+                if e["series"] not in authoritative_series or t in new_tickers
+            }
         for kp in props:
             ticker = kp["ticker"]
             if ticker not in self._cache:
@@ -405,10 +461,8 @@ class KalshiPriceCache:
                 }
             else:
                 entry = self._cache[ticker]
-                if kp["yes_ask"] is not None:
-                    entry["yes_ask"] = kp["yes_ask"]
-                if kp["no_ask"] is not None:
-                    entry["no_ask"] = kp["no_ask"]
+                entry["yes_ask"] = kp["yes_ask"]
+                entry["no_ask"] = kp["no_ask"]
                 entry["updated_at"] = now
 
     def purge_old_date(self, today: "datetime.date") -> None:
@@ -553,31 +607,47 @@ class OpportunityTracker:
 
 
 def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
-    poly_index: dict[tuple, dict] = {}
+    # Key on date only, keep all candidates per key: doubleheaders repeat the
+    # same (player, line, date) — the right game is picked by start time below.
+    poly_index: dict[tuple, list[dict]] = {}
     for pp in poly_props:
         game_date = pp["game_start"][:10]
         key = (pp["smt"], pp["player_norm"], pp["line"], game_date)
-        poly_index[key] = pp
+        poly_index.setdefault(key, []).append(pp)
 
     matches = []
     for kp in kalshi_props:
         smt = SERIES_TO_SMT[kp["series"]]
         game_date = kp["game_dt_utc"].strftime("%Y-%m-%d")
         key = (smt, kp["player_norm"], kp["line"], game_date)
-        pp = poly_index.get(key)
+        pp = None
+        best_diff = None
+        for cand in poly_index.get(key, []):
+            try:
+                p_dt = datetime.fromisoformat(cand["game_start"].replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            diff = abs((kp["game_dt_utc"] - p_dt).total_seconds())
+            # Same 30-min window the moneyline matcher uses (rule 5)
+            if diff <= 30 * 60 and (best_diff is None or diff < best_diff):
+                best_diff = diff
+                pp = cand
         if pp is None:
             continue
 
         k_yes, k_no = kp["yes_ask"], kp["no_ask"]
         p_yes, p_no = pp["yes_ask"], pp["no_ask"]
 
-        for direction, leg1_name, leg1_ask, leg2_name, leg2_ask in [
-            ("Poly YES + Kalshi NO", "Poly YES", p_yes, "Kalshi NO", k_no),
-            ("Kalshi YES + Poly NO", "Kalshi YES", k_yes, "Poly NO", p_no),
+        for direction, leg1_name, leg1_ask, leg1_fee_rate, leg2_name, leg2_ask, leg2_fee_rate in [
+            ("Poly YES + Kalshi NO", "Poly YES", p_yes, POLYMARKET_TAKER_FEE_RATE,
+             "Kalshi NO", k_no, KALSHI_TAKER_FEE_RATE),
+            ("Kalshi YES + Poly NO", "Kalshi YES", k_yes, KALSHI_TAKER_FEE_RATE,
+             "Poly NO", p_no, POLYMARKET_TAKER_FEE_RATE),
         ]:
             if leg1_ask is None or leg2_ask is None:
                 continue
-            total = leg1_ask + leg2_ask
+            # Per-leg taker fees (CLAUDE.md: total_cost = asks + 1% of each ask)
+            total = leg1_ask * (1 + leg1_fee_rate) + leg2_ask * (1 + leg2_fee_rate)
             if total >= ARB_THRESHOLD:
                 continue
             # Flag suspiciously deep gaps — likely ghost/stale price on one leg
@@ -654,9 +724,10 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
             })
             return
 
-        # Recompute against the same threshold match_props uses (raw ask sum vs ARB_THRESHOLD)
+        # Recompute with the same fee-inclusive formula match_props uses
         poly_ask = arb["leg2_ask"] if "Kalshi" in arb["leg1"] else arb["leg1_ask"]
-        total = confirmed_k_ask + poly_ask
+        total = (confirmed_k_ask * (1 + KALSHI_TAKER_FEE_RATE)
+                 + poly_ask * (1 + POLYMARKET_TAKER_FEE_RATE))
 
         if total >= ARB_THRESHOLD:
             log_event({
@@ -667,7 +738,8 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
                 "direction": direction,
                 "ws_kalshi_ask": ws_kalshi_ask,
                 "rest_kalshi_ask": confirmed_k_ask,
-                "ws_total": round(ws_kalshi_ask + poly_ask, 4),
+                "ws_total": round(ws_kalshi_ask * (1 + KALSHI_TAKER_FEE_RATE)
+                                  + poly_ask * (1 + POLYMARKET_TAKER_FEE_RATE), 4),
                 "rest_total": round(total, 4),
                 "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
                 "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
@@ -969,21 +1041,35 @@ async def fetch_polymarket(session: aiohttp.ClientSession) -> tuple[list[dict], 
     return markets, fetched_at
 
 
-def fetch_kalshi_props(today_utc: "datetime.date") -> list[dict]:
+def fetch_kalshi_props(today_utc: "datetime.date") -> tuple[list[dict], set]:
+    """
+    Fetch open prop markets for all series. Returns (props, ok_series) where
+    ok_series is the set of series fetched completely (all pages) — only those
+    are authoritative for cache eviction in seed_from_rest().
+    """
     valid_dates = {today_utc, today_utc - timedelta(days=1)}
     results = []
+    ok_series: set = set()
     for series in SERIES_TO_SMT:
+        markets: list[dict] = []
+        cursor = None
         try:
-            resp = requests.get(
-                f"{KALSHI_BASE}/markets",
-                params={"series_ticker": series, "status": "open", "limit": 200},
-                timeout=REST_TIMEOUT,
-            )
-            resp.raise_for_status()
+            while True:
+                params = {"series_ticker": series, "status": "open", "limit": 200}
+                if cursor:
+                    params["cursor"] = cursor
+                resp = requests.get(f"{KALSHI_BASE}/markets", params=params, timeout=REST_TIMEOUT)
+                resp.raise_for_status()
+                data = resp.json()
+                markets.extend(data.get("markets", []))
+                cursor = data.get("cursor")
+                if not cursor or not data.get("markets"):
+                    break
         except requests.RequestException as exc:
             print(f"[WARN] Kalshi {series} fetch failed: {exc}", file=sys.stderr)
             continue
-        for m in resp.json().get("markets", []):
+        ok_series.add(series)
+        for m in markets:
             ticker = m.get("ticker", "")
             game_dt = _kalshi_game_dt_utc(ticker)
             if game_dt is None or game_dt.date() not in valid_dates:
@@ -1006,7 +1092,7 @@ def fetch_kalshi_props(today_utc: "datetime.date") -> list[dict]:
                 "no_ask": no_ask,
                 "game_dt_utc": game_dt,
             })
-    return results
+    return results, ok_series
 
 
 def fetch_poly_props(today_str: str) -> list[dict]:
@@ -1160,33 +1246,36 @@ async def _ws_subscribe_chunks(ws, tickers: list[str], channel: str, start_id: i
 
 def _handle_ws_message(data: dict) -> bool:
     """
-    Dispatch a single WS message. Returns True if the caller should resubscribe
-    that ticker (sequence gap on orderbook_delta).
+    Dispatch a single WS message. Returns True if the caller should reconnect
+    (sequence gap on an orderbook_delta sid stream).
+    Kalshi WS v2 nests the payload under "msg"; only type/sid/seq live at the
+    top level (LEARNED_RULES.md rule 17).
     """
     msg_type = data.get("type")
-    ticker   = data.get("market_ticker")
+    payload  = data.get("msg") or {}
+    ticker   = payload.get("market_ticker")
+    sid      = data.get("sid")
+    seq      = data.get("seq")
 
     if msg_type == "orderbook_snapshot":
         if ticker:
-            _order_book.apply_snapshot(ticker, data.get("seq", 0), data.get("yes", []))
+            if not _order_book.apply_snapshot(sid, seq, payload):
+                return True
+            check_arb_moneyline(utc_now())
 
     elif msg_type == "orderbook_delta":
         if ticker:
-            ok = _order_book.apply_delta(
-                ticker,
-                data.get("seq"),
-                data.get("side", ""),
-                data.get("price"),
-                data.get("delta"),
-            )
+            ok = _order_book.apply_delta(sid, seq, payload)
             if not ok:
                 return True
             check_arb_moneyline(utc_now())
 
     elif msg_type == "ticker":
-        # Props price update — cache only; arb checked in _poly_props_polling_task
+        # Props price update — fire the arb check immediately on any change
+        # instead of waiting up to 30s for the next Poly WS (CDN) update.
         if ticker:
-            _price_cache.update_from_ws(ticker, data)
+            if _price_cache.update_from_ws(ticker, payload):
+                _run_props_arb_check_from_ws()
 
     elif msg_type == "subscribed":
         pass
@@ -1213,6 +1302,7 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                 backoff = 1
 
                 today = datetime.now(timezone.utc).date()
+                _order_book.reset_connection()
                 ml_tickers   = _order_book.today_tickers(today)
                 prop_tickers = _price_cache.today_tickers(today)
 
@@ -1239,14 +1329,9 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                     needs_resub = _handle_ws_message(data)
 
                     if needs_resub:
-                        bad_ticker = data.get("market_ticker")
-                        if bad_ticker:
-                            resub_id = _next_id() + 10000
-                            await ws.send(json.dumps({
-                                "id": resub_id,
-                                "cmd": "subscribe",
-                                "params": {"channels": ["orderbook_delta"], "market_tickers": [bad_ticker]},
-                            }))
+                        # A seq gap invalidates every book on that sid stream;
+                        # reconnect to get fresh snapshots for all tickers.
+                        raise RuntimeError("orderbook seq gap — reconnecting for fresh snapshots")
 
                     # Date rollover: resubscribe to next day's tickers
                     new_today = datetime.now(timezone.utc).date()
@@ -1281,14 +1366,21 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
 # ─── Kalshi Props Reconciliation Task ────────────────────────────────────────
 
 _KALSHI_PROPS_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
+# Serializes the periodic reconcile against reconnect-spawned ones — without
+# this, an older fetch can land after a newer one and re-seed stale data.
+_kalshi_reconcile_lock = asyncio.Lock()
 
 async def _kalshi_props_reconcile_once() -> None:
     """Pull Kalshi props via REST and merge into _price_cache. Non-fatal on error."""
     loop = asyncio.get_running_loop()
     today_utc = datetime.now(timezone.utc).date()
     try:
-        props = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
-        _price_cache.seed_from_rest(props)
+        async with _kalshi_reconcile_lock:
+            props, ok_series = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
+            _price_cache.seed_from_rest(props, authoritative_series=ok_series)
+        # Eviction can close arbs — re-check instead of waiting for the next
+        # WS tick, which may not come during quiet stretches.
+        _run_props_arb_check_from_ws()
     except Exception as exc:
         print(f"[KALSHI-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
 
@@ -1461,14 +1553,90 @@ async def _seed_one_ml_league(
     return slugs
 
 
+def _fetch_poly_props_events() -> list:
+    """Blocking REST fetch of props search results. Run in an executor."""
+    events = []
+    for q in ["mlb will record at least", "nba will record", "player points", "player rebounds"]:
+        try:
+            resp = requests.get(
+                f"{POLYMARKET_US_GATEWAY}/v1/search",
+                params={"query": q, "limit": 200},
+                timeout=REST_TIMEOUT,
+            )
+            resp.raise_for_status()
+            events.extend(resp.json().get("events", []))
+        except Exception:
+            pass
+    return events
+
+
+def _update_poly_props_map(events: list) -> list[str]:
+    """
+    Parse search events into _poly_ws_props_token_map. REST is authoritative:
+    markets seen closed/inactive/date-expired are evicted from the map so they
+    stop serving ghost prices. Markets merely absent from search results are
+    left alone (they may still stream via WS). Returns stored slugs.
+    """
+    now = datetime.now(timezone.utc)
+    today_str = now.date().strftime("%Y-%m-%d")
+    supported_smts = set(SERIES_TO_SMT.values())
+    today = date.fromisoformat(today_str)
+    valid_dates = {today_str, (today - timedelta(days=1)).isoformat()}
+    kept: list[str] = []
+
+    for event in events:
+        event_title = event.get("title", "")
+        for m in event.get("markets", []):
+            try:
+                smt = m.get("sportsMarketType", "")
+                if smt not in supported_smts:
+                    continue
+                slug = m.get("slug", "")
+                if not slug:
+                    continue
+                game_start = m.get("gameStartTime", "") or ""
+                dead = (
+                    not m.get("active") or m.get("closed") or m.get("archived")
+                    or game_start[:10] not in valid_dates
+                )
+                if dead:
+                    _poly_ws_props_token_map.pop(slug, None)
+                    continue
+                metadata = m.get("metadata") or {}
+                player_name = metadata.get("playerName", "")
+                if not player_name:
+                    continue
+                yes_ask = no_ask = None
+                for side in m.get("marketSides", []):
+                    ask = _poly_ask(side)
+                    if side.get("long") is True:
+                        yes_ask = ask
+                    elif side.get("long") is False:
+                        no_ask = ask
+                _poly_ws_props_token_map[slug] = {
+                    "slug": slug,
+                    "smt": smt,
+                    "player_name": player_name,
+                    "player_norm": normalize_name(player_name),
+                    "line": m.get("line"),
+                    "game_start": game_start,
+                    "event_title": event_title,
+                    "yes_ask": yes_ask,
+                    "no_ask": no_ask,
+                    "updated_at": now,
+                }
+                kept.append(slug)
+            except (TypeError, ValueError, KeyError):
+                continue
+    return kept
+
+
 async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[str], list[str]]:
     """
     Fetch Polymarket markets via REST, populate slug-keyed WS maps, and return
     (ml_slugs, props_slugs) for WS subscription.
     Called on startup and on every WS reconnect.
     """
-    global _poly_ws_ml_token_map, _poly_ws_props_token_map
-
     now = datetime.now(timezone.utc)
 
     # ── Moneyline markets — all league slugs fetched concurrently ──
@@ -1486,73 +1654,36 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
 
     # ── Props markets ──
     loop = asyncio.get_running_loop()
-    today_str = now.date().strftime("%Y-%m-%d")
-    supported_smts = set(SERIES_TO_SMT.values())
-    today = date.fromisoformat(today_str)
-    valid_dates = {today_str, (today - timedelta(days=1)).isoformat()}
-
     try:
-        def _fetch_props_raw() -> list:
-            events = []
-            for q in ["mlb will record at least", "nba will record", "player points", "player rebounds"]:
-                try:
-                    resp = requests.get(
-                        f"{POLYMARKET_US_GATEWAY}/v1/search",
-                        params={"query": q, "limit": 200},
-                        timeout=REST_TIMEOUT,
-                    )
-                    resp.raise_for_status()
-                    events.extend(resp.json().get("events", []))
-                except Exception:
-                    pass
-            return events
-
-        events = await loop.run_in_executor(None, _fetch_props_raw)
-
-        for event in events:
-            event_title = event.get("title", "")
-            for m in event.get("markets", []):
-                try:
-                    smt = m.get("sportsMarketType", "")
-                    if smt not in supported_smts:
-                        continue
-                    if not m.get("active") or m.get("closed") or m.get("archived"):
-                        continue
-                    game_start = m.get("gameStartTime", "") or ""
-                    if game_start[:10] not in valid_dates:
-                        continue
-                    metadata = m.get("metadata") or {}
-                    player_name = metadata.get("playerName", "")
-                    if not player_name:
-                        continue
-                    slug = m.get("slug", "")
-                    if not slug:
-                        continue
-                    yes_ask = no_ask = None
-                    for side in m.get("marketSides", []):
-                        ask = _poly_ask(side)
-                        if side.get("long") is True:
-                            yes_ask = ask
-                        elif side.get("long") is False:
-                            no_ask = ask
-                    _poly_ws_props_token_map[slug] = {
-                        "smt": smt,
-                        "player_name": player_name,
-                        "player_norm": normalize_name(player_name),
-                        "line": m.get("line"),
-                        "game_start": game_start,
-                        "event_title": event_title,
-                        "yes_ask": yes_ask,
-                        "no_ask": no_ask,
-                        "updated_at": now,
-                    }
-                    props_slugs.append(slug)
-                except (TypeError, ValueError, KeyError):
-                    continue
+        events = await loop.run_in_executor(None, _fetch_poly_props_events)
+        async with _poly_ws_lock:
+            props_slugs = _update_poly_props_map(events)
     except Exception as exc:
         print(f"[POLY-WS] Props REST seed error: {exc}", file=sys.stderr)
 
     return ml_slugs, props_slugs
+
+
+_POLY_PROPS_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
+
+async def _poly_props_reconcile_task() -> None:
+    """
+    Periodically re-pull Polymarket props via REST: refreshes prices/flags,
+    evicts markets that went closed, and bumps updated_at so live markets pass
+    the staleness filter (mirrors _kalshi_props_reconciliation_task).
+    """
+    loop = asyncio.get_running_loop()
+    while True:
+        await asyncio.sleep(_POLY_PROPS_RECONCILE_INTERVAL)
+        try:
+            events = await loop.run_in_executor(None, _fetch_poly_props_events)
+            async with _poly_ws_lock:
+                _update_poly_props_map(events)
+            # Eviction can close arbs — re-check instead of waiting for the
+            # next WS tick, which may not come during quiet stretches.
+            _run_props_arb_check_from_ws()
+        except Exception as exc:
+            print(f"[POLY-RECONCILE] REST re-seed failed: {exc}", file=sys.stderr)
 
 
 def _rebuild_poly_ml_cache() -> None:
@@ -1635,9 +1766,15 @@ def _reconstruct_poly_props_list() -> list[dict]:
     """Build poly_props list from WS cache for match_props() consumption."""
     now = datetime.now(timezone.utc)
     stale_game_cutoff = now - timedelta(hours=4)
+    # Same freshness rule as the Kalshi side (rule 8): an entry neither the WS
+    # nor the 60s REST reconcile has touched recently is a ghost — skip it.
+    stale_price_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
     result = []
     for entry in _poly_ws_props_token_map.values():
         if entry.get("yes_ask") is None and entry.get("no_ask") is None:
+            continue
+        updated = entry.get("updated_at")
+        if updated is None or updated < stale_price_cutoff:
             continue
         try:
             game_dt = datetime.fromisoformat(entry["game_start"].replace("Z", "+00:00"))
@@ -1646,6 +1783,7 @@ def _reconstruct_poly_props_list() -> list[dict]:
         except (ValueError, KeyError):
             pass
         result.append({
+            "slug": entry.get("slug"),
             "smt": entry["smt"],
             "player_name": entry["player_name"],
             "player_norm": entry["player_norm"],
@@ -1857,8 +1995,8 @@ async def main_ws(api_key_id: str, private_key) -> None:
     loop = asyncio.get_running_loop()
     today_utc = datetime.now(timezone.utc).date()
     try:
-        initial_props = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
-        _price_cache.seed_from_rest(initial_props)
+        initial_props, initial_ok = await loop.run_in_executor(None, fetch_kalshi_props, today_utc)
+        _price_cache.seed_from_rest(initial_props, authoritative_series=initial_ok)
         print(f"[INIT] Seeded {len(initial_props)} prop tickers into price cache.", file=sys.stderr)
     except Exception as exc:
         print(f"[WARN] Initial prop REST seed failed: {exc}. WS will populate cache.", file=sys.stderr)
@@ -1872,6 +2010,7 @@ async def main_ws(api_key_id: str, private_key) -> None:
         _kalshi_ws_task(api_key_id, private_key),
         _poly_ws_task(),
         _kalshi_props_reconciliation_task(),
+        _poly_props_reconcile_task(),
         # _poly_ml_polling_task(),    # kept for side-by-side testing; swap with _poly_ws_task() above
         # _poly_props_polling_task(), # kept for side-by-side testing
     )
