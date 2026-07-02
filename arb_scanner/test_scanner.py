@@ -998,5 +998,335 @@ class TestPropArbTracker(unittest.TestCase):
         assert self.tracker.active_count() == 1
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DOMAIN 8 — Poly WS freshness guard + delta resubscribe
+# REST re-seeds are CDN-cached (max-age=30) and must not clobber prices the WS
+# touched more recently; new slugs discovered mid-connection must be reported
+# for delta subscription.
+
+import asyncio
+import itertools
+import json
+from datetime import datetime, timedelta, timezone
+
+import ws_manager as wm
+from ws_manager import (
+    _carry_ws_fresh_prices,
+    _poly_unsubscribed_slugs,
+    _update_poly_props_map,
+)
+
+
+def _props_search_event(slug, player, yes_ask, no_ask, game_start, active=True, closed=False):
+    return {
+        "title": "MLB props",
+        "markets": [{
+            "sportsMarketType": "baseball_player_hits",
+            "slug": slug,
+            "gameStartTime": game_start,
+            "active": active,
+            "closed": closed,
+            "archived": False,
+            "line": 1.5,
+            "metadata": {"playerName": player},
+            "marketSides": [
+                {"long": True, "quote": {"value": str(yes_ask)}},
+                {"long": False, "quote": {"value": str(no_ask)}},
+            ],
+        }],
+    }
+
+
+class TestCarryWsFreshPrices(unittest.TestCase):
+    """_carry_ws_fresh_prices: REST entry keeps WS prices iff WS touched them recently."""
+
+    def setUp(self):
+        self.now = datetime(2026, 7, 1, 23, 0, 0, tzinfo=timezone.utc)
+        self.new = {"yes_ask": 0.60, "no_ask": 0.45}
+
+    def test_FG01_ws_fresh_prices_carried(self):
+        old = {"yes_ask": 0.55, "no_ask": 0.50, "ws_at": self.now - timedelta(seconds=5)}
+        merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.55
+        assert merged["no_ask"] == 0.50
+
+    def test_FG02_ws_stale_rest_wins(self):
+        old = {"yes_ask": 0.55, "no_ask": 0.50, "ws_at": self.now - timedelta(seconds=60)}
+        merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.60
+        assert merged["no_ask"] == 0.45
+
+    def test_FG03_no_old_entry_rest_wins(self):
+        merged = _carry_ws_fresh_prices(None, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.60
+
+    def test_FG04_old_entry_never_ws_touched_rest_wins(self):
+        old = {"yes_ask": 0.55, "no_ask": 0.50}
+        merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.60
+
+    def test_FG10_only_ws_populated_sides_are_carried(self):
+        # Review F15.2: a side the WS never populated must take the REST value
+        # instead of being clobbered with None.
+        old = {"yes_ask": 0.55, "no_ask": None, "ws_at": self.now - timedelta(seconds=5)}
+        merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.55   # WS-fresh side carried
+        assert merged["no_ask"] == 0.45    # REST fills the side WS never saw
+
+
+class TestPropsMapFreshnessGuard(unittest.TestCase):
+    """_update_poly_props_map must respect the WS freshness guard and still evict."""
+
+    def setUp(self):
+        self._saved = dict(wm._poly_ws_props_token_map)
+        wm._poly_ws_props_token_map.clear()
+        now = datetime.now(timezone.utc)
+        self.game_start = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.slug = "hit-mlb-test-player-2026-07-01"
+
+    def tearDown(self):
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_props_token_map.update(self._saved)
+
+    def _seed_entry(self, ws_at):
+        wm._poly_ws_props_token_map[self.slug] = {
+            "slug": self.slug, "smt": "baseball_player_hits",
+            "player_name": "Test Player", "player_norm": "test player",
+            "line": 1.5, "game_start": self.game_start, "event_title": "MLB props",
+            "yes_ask": 0.30, "no_ask": 0.75,
+            "updated_at": datetime.now(timezone.utc), "ws_at": ws_at,
+        }
+
+    def test_FG05_ws_fresh_entry_keeps_ws_prices_on_rest_reseed(self):
+        self._seed_entry(ws_at=datetime.now(timezone.utc) - timedelta(seconds=3))
+        events = [_props_search_event(self.slug, "Test Player", 0.50, 0.55, self.game_start)]
+        kept = _update_poly_props_map(events)
+        assert self.slug in kept
+        entry = wm._poly_ws_props_token_map[self.slug]
+        assert entry["yes_ask"] == 0.30
+        assert entry["no_ask"] == 0.75
+
+    def test_FG06_ws_stale_entry_takes_rest_prices(self):
+        self._seed_entry(ws_at=datetime.now(timezone.utc) - timedelta(seconds=120))
+        events = [_props_search_event(self.slug, "Test Player", 0.50, 0.55, self.game_start)]
+        _update_poly_props_map(events)
+        entry = wm._poly_ws_props_token_map[self.slug]
+        assert entry["yes_ask"] == 0.50
+        assert entry["no_ask"] == 0.55
+
+    def test_FG07_dead_market_evicted_even_if_ws_fresh(self):
+        self._seed_entry(ws_at=datetime.now(timezone.utc))
+        events = [_props_search_event(self.slug, "Test Player", 0.50, 0.55,
+                                      self.game_start, closed=True)]
+        _update_poly_props_map(events)
+        assert self.slug not in wm._poly_ws_props_token_map
+
+    def test_FG11_vanished_old_date_entries_are_purged(self):
+        # Review F14.7: slugs that stop appearing in search results were never
+        # evicted — the map grew for the process lifetime. Entries with a
+        # game_start before yesterday must be purged on re-seed.
+        self._seed_entry(ws_at=None)
+        entry = wm._poly_ws_props_token_map[self.slug]
+        entry["game_start"] = (datetime.now(timezone.utc) - timedelta(days=3)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        _update_poly_props_map([])
+        assert self.slug not in wm._poly_ws_props_token_map
+
+
+class TestPolyWsMessageSetsWsAt(unittest.TestCase):
+    """WS lite messages must stamp ws_at so REST re-seeds can detect WS freshness."""
+
+    def setUp(self):
+        self._saved = dict(wm._poly_ws_props_token_map)
+        wm._poly_ws_props_token_map.clear()
+        self.slug = "hit-mlb-wsat-player-2026-07-01"
+        wm._poly_ws_props_token_map[self.slug] = {
+            "slug": self.slug, "smt": "baseball_player_hits",
+            "player_name": "Wsat Player", "player_norm": "wsat player",
+            "line": 1.5, "game_start": "2026-07-01T23:00:00Z", "event_title": "MLB props",
+            "yes_ask": None, "no_ask": None,
+            "updated_at": datetime.now(timezone.utc),
+        }
+
+    def tearDown(self):
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_props_token_map.update(self._saved)
+
+    def test_FG08_lite_message_sets_ws_at_and_prices(self):
+        msg = {"requestId": "r1", "marketDataLite": {
+            "marketSlug": self.slug,
+            "bestBid": {"value": "0.40"}, "bestAsk": {"value": "0.44"},
+        }}
+        asyncio.run(wm._handle_poly_ws_message(msg))
+        entry = wm._poly_ws_props_token_map[self.slug]
+        assert entry["yes_ask"] == 0.44
+        assert entry["no_ask"] == 0.60
+        assert isinstance(entry.get("ws_at"), datetime)
+
+    def test_FG09_priceless_frame_does_not_arm_freshness_window(self):
+        # Review F15.2: a frame with no usable price must not stamp ws_at (or
+        # bump updated_at) — otherwise it re-arms the 30s guard and blocks the
+        # REST dropped-message safety net forever.
+        before = wm._poly_ws_props_token_map[self.slug]["updated_at"]
+        msg = {"requestId": "r1", "marketDataLite": {"marketSlug": self.slug}}
+        asyncio.run(wm._handle_poly_ws_message(msg))
+        entry = wm._poly_ws_props_token_map[self.slug]
+        assert entry.get("ws_at") is None
+        assert entry["updated_at"] == before
+
+
+class TestPolyUnsubscribedSlugs(unittest.TestCase):
+    """_poly_unsubscribed_slugs: slugs in either WS map missing from the live subscription."""
+
+    def setUp(self):
+        self._saved_ml = dict(wm._poly_ws_ml_token_map)
+        self._saved_props = dict(wm._poly_ws_props_token_map)
+        wm._poly_ws_ml_token_map.clear()
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_ml_token_map["ml-a"] = {"slug": "ml-a"}
+        wm._poly_ws_ml_token_map["ml-b"] = {"slug": "ml-b"}
+        wm._poly_ws_props_token_map["prop-a"] = {"slug": "prop-a"}
+
+    def tearDown(self):
+        wm._poly_ws_ml_token_map.clear()
+        wm._poly_ws_ml_token_map.update(self._saved_ml)
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_props_token_map.update(self._saved_props)
+
+    def test_DS01_all_subscribed_returns_empty(self):
+        assert _poly_unsubscribed_slugs({"ml-a", "ml-b", "prop-a"}) == []
+
+    def test_DS02_new_slugs_in_both_maps_returned(self):
+        new = _poly_unsubscribed_slugs({"ml-a"})
+        assert sorted(new) == ["ml-b", "prop-a"]
+
+
+class _FakeWs:
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, frame):
+        self.sent.append(json.loads(frame))
+
+
+class TestPolyDeltaSubscribeLoop(unittest.TestCase):
+    """_poly_delta_subscribe_loop: subscribes map slugs missing from the live set."""
+
+    def setUp(self):
+        self._saved_ml = dict(wm._poly_ws_ml_token_map)
+        self._saved_props = dict(wm._poly_ws_props_token_map)
+        self._saved_interval = wm._POLY_DELTA_SUB_INTERVAL
+        self._saved_max = wm._POLY_MAX_SUB_FRAMES
+        wm._POLY_DELTA_SUB_INTERVAL = 0.01
+        wm._poly_ws_ml_token_map.clear()
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_ml_token_map["ml-a"] = {"slug": "ml-a"}
+
+    def tearDown(self):
+        wm._POLY_DELTA_SUB_INTERVAL = self._saved_interval
+        wm._POLY_MAX_SUB_FRAMES = self._saved_max
+        wm._poly_ws_ml_token_map.clear()
+        wm._poly_ws_ml_token_map.update(self._saved_ml)
+        wm._poly_ws_props_token_map.clear()
+        wm._poly_ws_props_token_map.update(self._saved_props)
+
+    def _run(self, coro, timeout=1.0):
+        async def bounded():
+            task = asyncio.ensure_future(coro)
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+            except asyncio.TimeoutError:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        asyncio.run(bounded())
+
+    def test_DS03_sends_subscribe_frame_for_new_slugs(self):
+        ws = _FakeWs()
+        subscribed = {"ml-a"}
+
+        async def scenario():
+            loop_task = asyncio.ensure_future(
+                wm._poly_delta_subscribe_loop(ws, subscribed, itertools.count(1))
+            )
+            await asyncio.sleep(0.05)  # a few idle iterations
+            wm._poly_ws_props_token_map["prop-new"] = {"slug": "prop-new"}
+            await asyncio.sleep(0.05)
+            loop_task.cancel()
+            try:
+                await loop_task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(scenario())
+        assert len(ws.sent) == 1
+        frame = ws.sent[0]["subscribe"]
+        assert frame["subscriptionType"] == "SUBSCRIPTION_TYPE_MARKET_DATA_LITE"
+        assert frame["marketSlugs"] == ["prop-new"]
+        assert "prop-new" in subscribed
+
+    def test_DS05_clean_server_close_ends_connection_promptly(self):
+        # Review F15.1: when the server closes the socket cleanly, the recv
+        # loop ends without raising — the connection runner must still return
+        # (with the delta loop cancelled) instead of hanging forever.
+        class _ClosedWs:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration  # server closed cleanly
+
+            async def send(self, frame):
+                pass
+
+        async def scenario():
+            await asyncio.wait_for(
+                wm._poly_run_connection(_ClosedWs(), {"ml-a"}, itertools.count(1)),
+                timeout=2.0,
+            )
+
+        asyncio.run(scenario())  # must not raise TimeoutError
+
+    def test_DS06_delta_loop_error_propagates_from_connection(self):
+        wm._POLY_MAX_SUB_FRAMES = 1
+        wm._poly_ws_props_token_map["prop-new"] = {"slug": "prop-new"}
+
+        class _QuietWs:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                await asyncio.sleep(3600)  # connection stays open, no messages
+
+            async def send(self, frame):
+                pass
+
+        async def scenario():
+            with self.assertRaises(RuntimeError):
+                await asyncio.wait_for(
+                    wm._poly_run_connection(_QuietWs(), {"ml-a"}, itertools.count(1)),
+                    timeout=2.0,
+                )
+
+        asyncio.run(scenario())
+
+    def test_DS04_raises_to_consolidate_at_frame_cap(self):
+        wm._POLY_MAX_SUB_FRAMES = 1  # initial subscribe already counts as frame 1
+        ws = _FakeWs()
+        wm._poly_ws_props_token_map["prop-new"] = {"slug": "prop-new"}
+
+        async def scenario():
+            with self.assertRaises(RuntimeError):
+                await asyncio.wait_for(
+                    wm._poly_delta_subscribe_loop(ws, {"ml-a"}, itertools.count(1)),
+                    timeout=1.0,
+                )
+
+        asyncio.run(scenario())
+        assert ws.sent == []
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

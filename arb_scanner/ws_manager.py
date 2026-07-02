@@ -1164,6 +1164,36 @@ _msg_id_iter  = itertools.count(1)
 _poly_ws_ml_token_map:    dict[str, dict] = {}
 _poly_ws_props_token_map: dict[str, dict] = {}
 _poly_ws_lock = asyncio.Lock()
+
+# REST endpoints sit behind a CDN with max-age=30, so a REST quote can be up to
+# 30s old. The WS is event-driven (silence = price unchanged), so any entry the
+# WS touched within this window is at least as fresh as REST.
+_POLY_WS_FRESH_SECONDS = 30
+
+
+def _carry_ws_fresh_prices(old: Optional[dict], new: dict, now: datetime) -> dict:
+    """Keep `old`'s WS prices in `new` if the WS touched them within
+    _POLY_WS_FRESH_SECONDS. `ws_at` is stamped only by the WS handler, never by
+    REST re-seeds, so it is a reliable provenance marker. Only sides the WS
+    actually populated are carried — a side the WS never saw takes the REST
+    value instead of being clobbered with None."""
+    if old is not None:
+        ws_at = old.get("ws_at")
+        if ws_at is not None and (now - ws_at).total_seconds() < _POLY_WS_FRESH_SECONDS:
+            if old.get("yes_ask") is not None:
+                new["yes_ask"] = old["yes_ask"]
+            if old.get("no_ask") is not None:
+                new["no_ask"] = old["no_ask"]
+            new["ws_at"] = ws_at
+    return new
+
+
+def _poly_unsubscribed_slugs(subscribed: set[str]) -> list[str]:
+    """Slugs present in either WS map but not yet subscribed on the live connection."""
+    return [
+        s for s in itertools.chain(_poly_ws_ml_token_map, _poly_ws_props_token_map)
+        if s not in subscribed
+    ]
 # Incremental-update index: slug → {"yes": list_idx, "no": list_idx}
 # Built by _rebuild_poly_ml_cache(); patched in O(1) by _patch_poly_ml_entry()
 _poly_ml_slot: dict[str, dict[str, int]] = {}
@@ -1487,6 +1517,7 @@ async def _seed_one_ml_league(
 ) -> list[str]:
     """Fetch one Polymarket league's events and populate _poly_ws_ml_token_map. Returns market slugs."""
     slugs: list[str] = []
+    parsed: list[dict] = []  # built without the lock; applied under it below
     try:
         async with session.get(
             f"{POLYMARKET_US_GATEWAY}/v2/leagues/{league_slug}/events",
@@ -1533,7 +1564,7 @@ async def _seed_one_ml_league(
                             no_abbr = abbr
                             no_name = display
 
-                    _poly_ws_ml_token_map[slug_m] = {
+                    parsed.append({
                         "slug": slug_m,
                         "title": m.get("question") or slug_m,
                         "yes_abbr": yes_abbr,
@@ -1544,10 +1575,20 @@ async def _seed_one_ml_league(
                         "no_ask": no_ask,
                         "raw": m,
                         "updated_at": now,
-                    }
-                    slugs.append(slug_m)
+                    })
                 except (TypeError, ValueError, KeyError):
                     continue
+
+        # _rebuild_poly_ml_cache and the WS handler both work under
+        # _poly_ws_lock — map writes must too, or a mid-reconcile WS tick can
+        # land on an entry that is being replaced.
+        async with _poly_ws_lock:
+            for entry in parsed:
+                slug_m = entry["slug"]
+                _poly_ws_ml_token_map[slug_m] = _carry_ws_fresh_prices(
+                    _poly_ws_ml_token_map.get(slug_m), entry, now
+                )
+                slugs.append(slug_m)
     except Exception as exc:
         print(f"[POLY-WS] ML REST seed error for {league_slug}: {exc}", file=sys.stderr)
     return slugs
@@ -1613,21 +1654,34 @@ def _update_poly_props_map(events: list) -> list[str]:
                         yes_ask = ask
                     elif side.get("long") is False:
                         no_ask = ask
-                _poly_ws_props_token_map[slug] = {
-                    "slug": slug,
-                    "smt": smt,
-                    "player_name": player_name,
-                    "player_norm": normalize_name(player_name),
-                    "line": m.get("line"),
-                    "game_start": game_start,
-                    "event_title": event_title,
-                    "yes_ask": yes_ask,
-                    "no_ask": no_ask,
-                    "updated_at": now,
-                }
+                _poly_ws_props_token_map[slug] = _carry_ws_fresh_prices(
+                    _poly_ws_props_token_map.get(slug),
+                    {
+                        "slug": slug,
+                        "smt": smt,
+                        "player_name": player_name,
+                        "player_norm": normalize_name(player_name),
+                        "line": m.get("line"),
+                        "game_start": game_start,
+                        "event_title": event_title,
+                        "yes_ask": yes_ask,
+                        "no_ask": no_ask,
+                        "updated_at": now,
+                    },
+                    now,
+                )
                 kept.append(slug)
             except (TypeError, ValueError, KeyError):
                 continue
+
+    # Purge entries that vanished from search results — eviction above only
+    # covers markets still PRESENT in results, so old-date leftovers would
+    # otherwise accumulate for the process lifetime.
+    for slug in [
+        s for s, e in _poly_ws_props_token_map.items()
+        if (e.get("game_start") or "")[:10] not in valid_dates
+    ]:
+        _poly_ws_props_token_map.pop(slug, None)
     return kept
 
 
@@ -1664,21 +1718,23 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
     return ml_slugs, props_slugs
 
 
-_POLY_PROPS_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
+_POLY_RECONCILE_INTERVAL = 60  # seconds between background REST re-pulls
 
-async def _poly_props_reconcile_task() -> None:
+async def _poly_reconcile_task() -> None:
     """
-    Periodically re-pull Polymarket props via REST: refreshes prices/flags,
-    evicts markets that went closed, and bumps updated_at so live markets pass
-    the staleness filter (mirrors _kalshi_props_reconciliation_task).
+    Periodically re-pull Polymarket ML + props via REST: refreshes prices/flags
+    (WS-fresh prices are preserved via _carry_ws_fresh_prices), evicts props
+    that went closed, discovers new markets so the delta-subscribe loop can pick
+    them up, and bumps updated_at so live markets pass the staleness filter
+    (mirrors _kalshi_props_reconciliation_task).
     """
-    loop = asyncio.get_running_loop()
     while True:
-        await asyncio.sleep(_POLY_PROPS_RECONCILE_INTERVAL)
+        await asyncio.sleep(_POLY_RECONCILE_INTERVAL)
         try:
-            events = await loop.run_in_executor(None, _fetch_poly_props_events)
+            async with aiohttp.ClientSession(timeout=REQUEST_TIMEOUT) as session:
+                await _poly_ws_seed_from_rest(session)
             async with _poly_ws_lock:
-                _update_poly_props_map(events)
+                _rebuild_poly_ml_cache()
             # Eviction can close arbs — re-check instead of waiting for the
             # next WS tick, which may not come during quiet stretches.
             _run_props_arb_check_from_ws()
@@ -1882,6 +1938,11 @@ async def _handle_poly_ws_message(data: dict) -> None:
         if no_ask is not None and not (0 < no_ask < 1):
             no_ask = None
 
+        if yes_ask is None and no_ask is None:
+            # No usable price — must not stamp ws_at/updated_at, or the frame
+            # re-arms the freshness guard and blocks the REST safety net.
+            return
+
         async with _poly_ws_lock:
             if slug in _poly_ws_ml_token_map:
                 entry = _poly_ws_ml_token_map[slug]
@@ -1890,6 +1951,7 @@ async def _handle_poly_ws_message(data: dict) -> None:
                 if no_ask is not None:
                     entry["no_ask"] = no_ask
                 entry["updated_at"] = now
+                entry["ws_at"] = now
                 _patch_poly_ml_entry(slug, yes_ask, no_ask)
                 is_ml = True
             elif slug in _poly_ws_props_token_map:
@@ -1899,6 +1961,7 @@ async def _handle_poly_ws_message(data: dict) -> None:
                 if no_ask is not None:
                     entry["no_ask"] = no_ask
                 entry["updated_at"] = now
+                entry["ws_at"] = now
                 is_props = True
 
         if is_ml:
@@ -1910,6 +1973,71 @@ async def _handle_poly_ws_message(data: dict) -> None:
     # Full market data (order book) — not subscribed but handle gracefully
     if "marketData" in data or "trade" in data:
         return
+
+
+_POLY_DELTA_SUB_INTERVAL = 20   # seconds between checks for newly discovered slugs
+_POLY_MAX_SUB_FRAMES = 40       # reconnect to consolidate into one subscription after this
+
+
+async def _poly_delta_subscribe_loop(ws, subscribed: set[str], req_counter) -> None:
+    """Subscribe slugs that entered the WS maps after connect (reconcile finds
+    new markets every 60s; without this they would only ever get 30s-stale REST
+    quotes). Raises to force a consolidating reconnect once the connection has
+    accumulated _POLY_MAX_SUB_FRAMES subscriptions."""
+    n_frames = 1  # the initial subscribe
+    while True:
+        await asyncio.sleep(_POLY_DELTA_SUB_INTERVAL)
+        async with _poly_ws_lock:
+            new_slugs = _poly_unsubscribed_slugs(subscribed)
+        if not new_slugs:
+            continue
+        if n_frames >= _POLY_MAX_SUB_FRAMES:
+            raise RuntimeError(
+                f"{n_frames} subscribe frames on one connection — reconnecting to consolidate"
+            )
+        await ws.send(json.dumps({
+            "subscribe": {
+                "requestId": f"poly-{next(req_counter)}",
+                "subscriptionType": "SUBSCRIPTION_TYPE_MARKET_DATA_LITE",
+                "marketSlugs": new_slugs,
+            }
+        }))
+        subscribed.update(new_slugs)
+        n_frames += 1
+        print(f"[POLY-WS] Delta-subscribed {len(new_slugs)} new slugs.", file=sys.stderr)
+
+
+async def _poly_recv_loop(ws) -> None:
+    async for raw_msg in ws:
+        try:
+            data = json.loads(raw_msg)
+        except json.JSONDecodeError:
+            continue
+        await _handle_poly_ws_message(data)
+
+
+async def _poly_run_connection(ws, subscribed: set[str], req_counter) -> None:
+    """
+    Run the recv and delta-subscribe loops until the connection ends. Returns
+    on clean server close (recv loop finishes) and re-raises loop errors.
+    FIRST_COMPLETED, not FIRST_EXCEPTION: a clean close finishes recv without
+    raising, and the delta loop never finishes on its own — waiting for an
+    exception would hang forever with all Poly prices silently stale.
+    """
+    recv_task = asyncio.create_task(_poly_recv_loop(ws))
+    delta_task = asyncio.create_task(
+        _poly_delta_subscribe_loop(ws, subscribed, req_counter)
+    )
+    try:
+        done, _ = await asyncio.wait(
+            {recv_task, delta_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+    finally:
+        for t in (recv_task, delta_task):
+            t.cancel()
+        await asyncio.gather(recv_task, delta_task, return_exceptions=True)
+    for t in done:
+        t.result()  # re-raise so the outer loop reconnects with backoff
 
 
 async def _poly_ws_task() -> None:
@@ -1965,12 +2093,7 @@ async def _poly_ws_task() -> None:
                     file=sys.stderr,
                 )
 
-                async for raw_msg in ws:
-                    try:
-                        data = json.loads(raw_msg)
-                    except json.JSONDecodeError:
-                        continue
-                    await _handle_poly_ws_message(data)
+                await _poly_run_connection(ws, set(all_slugs), _req_counter)
 
         except Exception as exc:
             print(
@@ -2010,7 +2133,7 @@ async def main_ws(api_key_id: str, private_key) -> None:
         _kalshi_ws_task(api_key_id, private_key),
         _poly_ws_task(),
         _kalshi_props_reconciliation_task(),
-        _poly_props_reconcile_task(),
+        _poly_reconcile_task(),
         # _poly_ml_polling_task(),    # kept for side-by-side testing; swap with _poly_ws_task() above
         # _poly_props_polling_task(), # kept for side-by-side testing
     )
