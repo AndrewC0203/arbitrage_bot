@@ -363,5 +363,111 @@ class TestKalshiTickTriggersPropsCheck(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class TestExplicitNullClearsPrice(unittest.TestCase):
+    """Review F14.1: an explicit JSON null in yes_ask_dollars / yes_bid_dollars
+    means "no live quote" and must clear the side — only a MISSING key leaves
+    the cached price untouched."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._price_cache = KalshiPriceCache()
+        wm._price_cache._cache[PROP_TICKER] = _cache_entry(yes_ask=0.99, no_ask=0.79)
+        wm._poly_ml_cache = None
+
+    def test_explicit_null_yes_ask_clears_stale_price(self):
+        msg = {"type": "ticker", "sid": 2,
+               "msg": {"market_ticker": PROP_TICKER,
+                       "yes_ask_dollars": None, "yes_bid_dollars": "0.2100"}}
+        wm._handle_ws_message(msg)
+        self.assertIsNone(wm._price_cache._cache[PROP_TICKER]["yes_ask"])
+
+    def test_explicit_null_yes_bid_clears_no_ask(self):
+        msg = {"type": "ticker", "sid": 2,
+               "msg": {"market_ticker": PROP_TICKER,
+                       "yes_ask_dollars": "0.2200", "yes_bid_dollars": None}}
+        wm._handle_ws_message(msg)
+        self.assertIsNone(wm._price_cache._cache[PROP_TICKER]["no_ask"])
+
+    def test_missing_keys_leave_prices_untouched(self):
+        wm._price_cache.update_from_ws(PROP_TICKER, {"volume_fp": "1.00"})
+        entry = wm._price_cache._cache[PROP_TICKER]
+        self.assertEqual(entry["yes_ask"], 0.99)
+        self.assertEqual(entry["no_ask"], 0.79)
+
+
+class TestSnapshotSeqGap(unittest.TestCase):
+    """Review F14.3: seq is per-sid across ALL tickers on the stream — a gap
+    crossing an orderbook_snapshot means missed deltas for OTHER tickers, so
+    the snapshot must signal reconnect instead of silently resetting seq."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._price_cache = KalshiPriceCache()
+        wm._order_book.seed_from_rest([
+            {"ticker": ML_TICKER, "title": "Minnesota @ New York Yankees Winner?", "raw": {}},
+        ])
+        wm._poly_ml_cache = None
+
+    def test_seq_gap_at_snapshot_signals_resubscribe(self):
+        wm._handle_ws_message(_snapshot_msg(seq=1))
+        wm._handle_ws_message(_delta_msg(seq=2))
+        needs_resub = wm._handle_ws_message(_snapshot_msg(seq=9))  # 2 -> 9 gap
+        self.assertTrue(needs_resub)
+
+    def test_consecutive_snapshots_do_not_gap(self):
+        wm._handle_ws_message(_snapshot_msg(seq=1))
+        needs_resub = wm._handle_ws_message(_snapshot_msg(seq=2))
+        self.assertFalse(needs_resub)
+
+    def test_first_snapshot_after_reset_is_not_a_gap(self):
+        wm._handle_ws_message(_snapshot_msg(seq=7))
+        wm._order_book.reset_connection()
+        self.assertFalse(wm._handle_ws_message(_snapshot_msg(seq=1)))
+
+
+class TestKalshiReconcile(unittest.TestCase):
+    """Review F14.2/F14.4: the REST reconcile must fire the props arb check
+    (eviction can close arbs during quiet stretches), and concurrent reconciles
+    must be serialized so stale data can't land after fresher data."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._price_cache = KalshiPriceCache()
+        wm._poly_ml_cache = None
+
+    def test_reconcile_once_fires_props_arb_check(self):
+        import asyncio
+        calls = []
+        with patch.object(wm, "fetch_kalshi_props", lambda today: ([], set())), \
+             patch.object(wm, "_run_props_arb_check_from_ws", lambda: calls.append(1)):
+            asyncio.run(wm._kalshi_props_reconcile_once())
+        self.assertEqual(calls, [1])
+
+    def test_concurrent_reconciles_are_serialized(self):
+        import asyncio
+        import time as _time
+        windows = []
+
+        def slow_fetch(today):
+            start = _time.monotonic()
+            _time.sleep(0.05)
+            windows.append((start, _time.monotonic()))
+            return [], set()
+
+        async def scenario():
+            await asyncio.gather(
+                wm._kalshi_props_reconcile_once(),
+                wm._kalshi_props_reconcile_once(),
+            )
+
+        with patch.object(wm, "fetch_kalshi_props", slow_fetch), \
+             patch.object(wm, "_run_props_arb_check_from_ws", lambda: None):
+            asyncio.run(scenario())
+
+        self.assertEqual(len(windows), 2)
+        (s1, e1), (s2, e2) = sorted(windows)
+        self.assertGreaterEqual(s2, e1)  # second fetch starts after first finishes
+
+
 if __name__ == "__main__":
     unittest.main()
