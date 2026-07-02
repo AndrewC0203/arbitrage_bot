@@ -1065,6 +1065,14 @@ class TestCarryWsFreshPrices(unittest.TestCase):
         merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
         assert merged["yes_ask"] == 0.60
 
+    def test_FG10_only_ws_populated_sides_are_carried(self):
+        # Review F15.2: a side the WS never populated must take the REST value
+        # instead of being clobbered with None.
+        old = {"yes_ask": 0.55, "no_ask": None, "ws_at": self.now - timedelta(seconds=5)}
+        merged = _carry_ws_fresh_prices(old, dict(self.new), self.now)
+        assert merged["yes_ask"] == 0.55   # WS-fresh side carried
+        assert merged["no_ask"] == 0.45    # REST fills the side WS never saw
+
 
 class TestPropsMapFreshnessGuard(unittest.TestCase):
     """_update_poly_props_map must respect the WS freshness guard and still evict."""
@@ -1113,6 +1121,17 @@ class TestPropsMapFreshnessGuard(unittest.TestCase):
         _update_poly_props_map(events)
         assert self.slug not in wm._poly_ws_props_token_map
 
+    def test_FG11_vanished_old_date_entries_are_purged(self):
+        # Review F14.7: slugs that stop appearing in search results were never
+        # evicted — the map grew for the process lifetime. Entries with a
+        # game_start before yesterday must be purged on re-seed.
+        self._seed_entry(ws_at=None)
+        entry = wm._poly_ws_props_token_map[self.slug]
+        entry["game_start"] = (datetime.now(timezone.utc) - timedelta(days=3)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        _update_poly_props_map([])
+        assert self.slug not in wm._poly_ws_props_token_map
+
 
 class TestPolyWsMessageSetsWsAt(unittest.TestCase):
     """WS lite messages must stamp ws_at so REST re-seeds can detect WS freshness."""
@@ -1143,6 +1162,17 @@ class TestPolyWsMessageSetsWsAt(unittest.TestCase):
         assert entry["yes_ask"] == 0.44
         assert entry["no_ask"] == 0.60
         assert isinstance(entry.get("ws_at"), datetime)
+
+    def test_FG09_priceless_frame_does_not_arm_freshness_window(self):
+        # Review F15.2: a frame with no usable price must not stamp ws_at (or
+        # bump updated_at) — otherwise it re-arms the 30s guard and blocks the
+        # REST dropped-message safety net forever.
+        before = wm._poly_ws_props_token_map[self.slug]["updated_at"]
+        msg = {"requestId": "r1", "marketDataLite": {"marketSlug": self.slug}}
+        asyncio.run(wm._handle_poly_ws_message(msg))
+        entry = wm._poly_ws_props_token_map[self.slug]
+        assert entry.get("ws_at") is None
+        assert entry["updated_at"] == before
 
 
 class TestPolyUnsubscribedSlugs(unittest.TestCase):
@@ -1236,6 +1266,51 @@ class TestPolyDeltaSubscribeLoop(unittest.TestCase):
         assert frame["subscriptionType"] == "SUBSCRIPTION_TYPE_MARKET_DATA_LITE"
         assert frame["marketSlugs"] == ["prop-new"]
         assert "prop-new" in subscribed
+
+    def test_DS05_clean_server_close_ends_connection_promptly(self):
+        # Review F15.1: when the server closes the socket cleanly, the recv
+        # loop ends without raising — the connection runner must still return
+        # (with the delta loop cancelled) instead of hanging forever.
+        class _ClosedWs:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration  # server closed cleanly
+
+            async def send(self, frame):
+                pass
+
+        async def scenario():
+            await asyncio.wait_for(
+                wm._poly_run_connection(_ClosedWs(), {"ml-a"}, itertools.count(1)),
+                timeout=2.0,
+            )
+
+        asyncio.run(scenario())  # must not raise TimeoutError
+
+    def test_DS06_delta_loop_error_propagates_from_connection(self):
+        wm._POLY_MAX_SUB_FRAMES = 1
+        wm._poly_ws_props_token_map["prop-new"] = {"slug": "prop-new"}
+
+        class _QuietWs:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                await asyncio.sleep(3600)  # connection stays open, no messages
+
+            async def send(self, frame):
+                pass
+
+        async def scenario():
+            with self.assertRaises(RuntimeError):
+                await asyncio.wait_for(
+                    wm._poly_run_connection(_QuietWs(), {"ml-a"}, itertools.count(1)),
+                    timeout=2.0,
+                )
+
+        asyncio.run(scenario())
 
     def test_DS04_raises_to_consolidate_at_frame_cap(self):
         wm._POLY_MAX_SUB_FRAMES = 1  # initial subscribe already counts as frame 1
