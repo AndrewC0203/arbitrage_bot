@@ -15,7 +15,8 @@ arb_scanner/
     basketball.py        # NBA/WNBA/NCAAB
     soccer.py            # EPL/MLS/Champions League
     tennis.py            # ATP/WTA
-  arb_log.jsonl          # append-only JSONL (opened/updated/closed/prop_arb/fetch_error)
+  arb_log.jsonl          # append-only JSONL (opened/updated/closed/prop_arb/ghost_filter_summary/fetch_error)
+  ghost_log.jsonl        # suppressed ghost arbs (ghost_suppressed) — pattern analysis, 60s dedupe
   test_scanner.py        # unit tests
   requirements.txt       # aiohttp, websockets, requests, python-dotenv, cryptography
   .env                   # KALSHI_KEY_ID, KALSHI_KEY_PATH, POLYMARKET_US_KEY_ID, POLYMARKET_US_SECRET_KEY
@@ -55,7 +56,7 @@ is_arb  = total_cost < ARB_THRESHOLD (0.96)
 ```
 
 1. **Moneyline**: Kalshi YES (team A) + Polymarket YES (team B). Arb when `total_cost < 0.96`.
-2. **Props**: Match by `(smt, player_norm, line, game_date)`. YES one side + NO other; same formula.
+2. **Props**: Match by `(smt, player_norm, line, game_date)`. YES one side + NO other; same formula. Would-be prop arbs must then pass the Layer-1 ghost filters (F1 pinned, F2 mid agreement, F3 edge cap, F4 spread/two-sided) — suppressions go to `ghost_log.jsonl`, per-reason counts to hourly `ghost_filter_summary` events.
 
 ### Sports Configs
 
@@ -75,6 +76,10 @@ is_arb  = total_cost < ARB_THRESHOLD (0.96)
 | KALSHI_TAKER_FEE_RATE     | 0.01  | 1% per Kalshi leg              |
 | POLYMARKET_TAKER_FEE_RATE | 0.01  | 1% per Polymarket leg          |
 | \_CACHE_STALE_SECONDS     | 300   | Evict entries older than 5 min |
+| GHOST_PIN_PROB            | 0.97  | F1: leg implied ≥97% resolved → suppress |
+| GHOST_MID_DISAGREEMENT_MAX | 0.15 | F2: max venue-mid divergence   |
+| GHOST_MAX_GAP_CENTS       | 10.0  | F3: fatter edges presumed fake |
+| GHOST_MAX_SPREAD          | 0.20  | F4: max per-venue bid/ask spread |
 
 ### API Endpoints
 
