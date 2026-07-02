@@ -49,3 +49,7 @@ Live captures (3× parallel connections, 180–240s, in-season evening): `SUBSCR
 ## [2026-07-01] Stacked branch — claude/fix-poly-ws-latency branched from claude/fix-kalshi-ws-pipeline, not main
 
 The work modifies code (poly reconcile, staleness guards) that only exists in unmerged PR #14. Branching from main would have required cherry-picking or conflicting duplicates. PR #15 is based on the PR #14 branch and should merge after it.
+
+## [2026-07-02] Review fixes — supersedes "REST re-seeds are authoritative" (2026-07-01) for price fields
+
+REST re-seeds remain authoritative for market EXISTENCE (eviction of closed/vanished markets, discovery of new ones) but no longer for PRICES on WS-fresh entries: `_carry_ws_fresh_prices` keeps a side's price when the WS populated it within the last 30s (per-side; a side the WS never saw still takes the REST value). Priceless WS frames no longer stamp `ws_at`/`updated_at`, so the >30s REST-overwrite window stays live as the dropped-message safety net. Other review fixes: Poly WS connection runner now uses FIRST_COMPLETED (clean server close previously hung the task forever with prices silently stale); explicit JSON null in Kalshi ticker fields now clears the side (key-presence check); orderbook snapshots detect per-sid seq gaps and force reconnect; Kalshi reconciles serialize on a lock; both reconcile tasks fire the props arb check after re-seeding; props map purges vanished old-date slugs; fake_arb.py Kalshi WS layer ported to the v2 schema; ML map writes moved under _poly_ws_lock.

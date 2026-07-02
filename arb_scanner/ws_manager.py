@@ -1174,12 +1174,16 @@ _POLY_WS_FRESH_SECONDS = 30
 def _carry_ws_fresh_prices(old: Optional[dict], new: dict, now: datetime) -> dict:
     """Keep `old`'s WS prices in `new` if the WS touched them within
     _POLY_WS_FRESH_SECONDS. `ws_at` is stamped only by the WS handler, never by
-    REST re-seeds, so it is a reliable provenance marker."""
+    REST re-seeds, so it is a reliable provenance marker. Only sides the WS
+    actually populated are carried — a side the WS never saw takes the REST
+    value instead of being clobbered with None."""
     if old is not None:
         ws_at = old.get("ws_at")
         if ws_at is not None and (now - ws_at).total_seconds() < _POLY_WS_FRESH_SECONDS:
-            new["yes_ask"] = old.get("yes_ask")
-            new["no_ask"] = old.get("no_ask")
+            if old.get("yes_ask") is not None:
+                new["yes_ask"] = old["yes_ask"]
+            if old.get("no_ask") is not None:
+                new["no_ask"] = old["no_ask"]
             new["ws_at"] = ws_at
     return new
 
@@ -1513,6 +1517,7 @@ async def _seed_one_ml_league(
 ) -> list[str]:
     """Fetch one Polymarket league's events and populate _poly_ws_ml_token_map. Returns market slugs."""
     slugs: list[str] = []
+    parsed: list[dict] = []  # built without the lock; applied under it below
     try:
         async with session.get(
             f"{POLYMARKET_US_GATEWAY}/v2/leagues/{league_slug}/events",
@@ -1559,25 +1564,31 @@ async def _seed_one_ml_league(
                             no_abbr = abbr
                             no_name = display
 
-                    _poly_ws_ml_token_map[slug_m] = _carry_ws_fresh_prices(
-                        _poly_ws_ml_token_map.get(slug_m),
-                        {
-                            "slug": slug_m,
-                            "title": m.get("question") or slug_m,
-                            "yes_abbr": yes_abbr,
-                            "no_abbr": no_abbr,
-                            "yes_name": yes_name,
-                            "no_name": no_name,
-                            "yes_ask": yes_ask,
-                            "no_ask": no_ask,
-                            "raw": m,
-                            "updated_at": now,
-                        },
-                        now,
-                    )
-                    slugs.append(slug_m)
+                    parsed.append({
+                        "slug": slug_m,
+                        "title": m.get("question") or slug_m,
+                        "yes_abbr": yes_abbr,
+                        "no_abbr": no_abbr,
+                        "yes_name": yes_name,
+                        "no_name": no_name,
+                        "yes_ask": yes_ask,
+                        "no_ask": no_ask,
+                        "raw": m,
+                        "updated_at": now,
+                    })
                 except (TypeError, ValueError, KeyError):
                     continue
+
+        # _rebuild_poly_ml_cache and the WS handler both work under
+        # _poly_ws_lock — map writes must too, or a mid-reconcile WS tick can
+        # land on an entry that is being replaced.
+        async with _poly_ws_lock:
+            for entry in parsed:
+                slug_m = entry["slug"]
+                _poly_ws_ml_token_map[slug_m] = _carry_ws_fresh_prices(
+                    _poly_ws_ml_token_map.get(slug_m), entry, now
+                )
+                slugs.append(slug_m)
     except Exception as exc:
         print(f"[POLY-WS] ML REST seed error for {league_slug}: {exc}", file=sys.stderr)
     return slugs
@@ -1662,6 +1673,15 @@ def _update_poly_props_map(events: list) -> list[str]:
                 kept.append(slug)
             except (TypeError, ValueError, KeyError):
                 continue
+
+    # Purge entries that vanished from search results — eviction above only
+    # covers markets still PRESENT in results, so old-date leftovers would
+    # otherwise accumulate for the process lifetime.
+    for slug in [
+        s for s, e in _poly_ws_props_token_map.items()
+        if (e.get("game_start") or "")[:10] not in valid_dates
+    ]:
+        _poly_ws_props_token_map.pop(slug, None)
     return kept
 
 
@@ -1918,6 +1938,11 @@ async def _handle_poly_ws_message(data: dict) -> None:
         if no_ask is not None and not (0 < no_ask < 1):
             no_ask = None
 
+        if yes_ask is None and no_ask is None:
+            # No usable price — must not stamp ws_at/updated_at, or the frame
+            # re-arms the freshness guard and blocks the REST safety net.
+            return
+
         async with _poly_ws_lock:
             if slug in _poly_ws_ml_token_map:
                 entry = _poly_ws_ml_token_map[slug]
@@ -1991,6 +2016,30 @@ async def _poly_recv_loop(ws) -> None:
         await _handle_poly_ws_message(data)
 
 
+async def _poly_run_connection(ws, subscribed: set[str], req_counter) -> None:
+    """
+    Run the recv and delta-subscribe loops until the connection ends. Returns
+    on clean server close (recv loop finishes) and re-raises loop errors.
+    FIRST_COMPLETED, not FIRST_EXCEPTION: a clean close finishes recv without
+    raising, and the delta loop never finishes on its own — waiting for an
+    exception would hang forever with all Poly prices silently stale.
+    """
+    recv_task = asyncio.create_task(_poly_recv_loop(ws))
+    delta_task = asyncio.create_task(
+        _poly_delta_subscribe_loop(ws, subscribed, req_counter)
+    )
+    try:
+        done, _ = await asyncio.wait(
+            {recv_task, delta_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+    finally:
+        for t in (recv_task, delta_task):
+            t.cancel()
+        await asyncio.gather(recv_task, delta_task, return_exceptions=True)
+    for t in done:
+        t.result()  # re-raise so the outer loop reconnects with backoff
+
+
 async def _poly_ws_task() -> None:
     """
     Single Polymarket WS connection. Seeds slug maps from REST on every connect,
@@ -2044,21 +2093,7 @@ async def _poly_ws_task() -> None:
                     file=sys.stderr,
                 )
 
-                subscribed = set(all_slugs)
-                recv_task = asyncio.create_task(_poly_recv_loop(ws))
-                delta_task = asyncio.create_task(
-                    _poly_delta_subscribe_loop(ws, subscribed, _req_counter)
-                )
-                try:
-                    done, pending = await asyncio.wait(
-                        {recv_task, delta_task}, return_when=asyncio.FIRST_EXCEPTION
-                    )
-                finally:
-                    for t in (recv_task, delta_task):
-                        t.cancel()
-                    await asyncio.gather(recv_task, delta_task, return_exceptions=True)
-                for t in done:
-                    t.result()  # re-raise so the outer loop reconnects
+                await _poly_run_connection(ws, set(all_slugs), _req_counter)
 
         except Exception as exc:
             print(
