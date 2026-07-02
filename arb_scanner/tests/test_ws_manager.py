@@ -257,12 +257,16 @@ class TestPolyPropsMapUpdate(unittest.TestCase):
 
 
 def _match_inputs(k_yes=0.50, p_no=0.455):
+    # Two-sided quotes with sane spreads and agreeing mids — the ghost filters
+    # (F1-F4) require both venues' books to look live; these tests target the
+    # fee math, not the filters.
     game = datetime.now(timezone.utc)
+    p_yes = round(1 - p_no + 0.02, 3)  # 2¢ above the bid implied by no_ask
     kp = [{"series": "KXMLBHIT", "ticker": "K-T1", "player_name": "A B",
-           "player_norm": "a b", "line": 2, "yes_ask": k_yes, "no_ask": None,
+           "player_norm": "a b", "line": 2, "yes_ask": k_yes, "no_ask": round(1.05 - k_yes, 3),
            "game_dt_utc": game, "updated_at": game}]
     pp = [{"smt": "baseball_player_hits", "player_norm": "a b", "player_name": "A B",
-           "line": 2, "yes_ask": None, "no_ask": p_no,
+           "line": 2, "yes_ask": p_yes, "no_ask": p_no,
            "game_start": game.strftime("%Y-%m-%dT%H:%M:%SZ"), "event_title": "X"}]
     return kp, pp
 
@@ -294,7 +298,7 @@ class TestPropsFees(unittest.TestCase):
             "event_title": "X", "game_start": "2026-07-01T23:00:00Z",
             "player_name": "A B", "stat_type": "hits", "line": 2,
             "total_cost": 0.955, "gap_cents": 0.5, "poly_smt": "baseball_player_hits",
-            "suspicious": False, "poly_ws_yes_ask": None, "poly_ws_no_ask": 0.455,
+            "poly_ws_yes_ask": None, "poly_ws_no_ask": 0.455,
         }
         logged = []
 
@@ -318,13 +322,14 @@ class TestDoubleheaderMatching(unittest.TestCase):
     @staticmethod
     def _kp(hour=17):
         return [{"series": "KXMLBHIT", "ticker": "K-G1", "player_name": "A B",
-                 "player_norm": "a b", "line": 2, "yes_ask": 0.50, "no_ask": None,
+                 "player_norm": "a b", "line": 2, "yes_ask": 0.50, "no_ask": 0.55,
                  "game_dt_utc": datetime(2026, 7, 1, hour, 10, tzinfo=timezone.utc)}]
 
     @staticmethod
     def _pp(game_start, no_ask):
+        # Two-sided (ghost filters require both venues' mids computable)
         return {"smt": "baseball_player_hits", "player_norm": "a b", "player_name": "A B",
-                "line": 2, "yes_ask": None, "no_ask": no_ask,
+                "line": 2, "yes_ask": round(1 - no_ask + 0.02, 3), "no_ask": no_ask,
                 "game_start": game_start, "event_title": "X"}
 
     def test_matches_same_game_leg_of_doubleheader(self):

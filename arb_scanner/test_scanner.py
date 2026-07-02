@@ -906,7 +906,6 @@ def _prop_arb(ticker, direction, leg1_ask=0.45, leg2_ask=0.46):
         "event_title": "Game A",
         "game_start": "2026-06-30T23:00:00Z",
         "poly_smt": "baseball_player_hits",
-        "suspicious": False,
         "poly_ws_yes_ask": 0.45,
         "poly_ws_no_ask": 0.46,
     }

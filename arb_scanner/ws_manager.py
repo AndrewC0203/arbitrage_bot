@@ -101,6 +101,16 @@ KALSHI_TAKER_FEE_RATE = 0.01
 POLYMARKET_TAKER_FEE_RATE = 0.01
 POLY_POLL_SECONDS     = 2
 LOG_FILE              = "arb_log.jsonl"
+
+# Ghost-filter thresholds — Layer 1 quote-sanity filters applied in match_props
+# (docs/superpowers/specs/2026-07-02-ghost-free-arbs-design.md)
+GHOST_PIN_PROB             = 0.97   # F1: leg implied ≥97% resolved → skip pair
+GHOST_MID_DISAGREEMENT_MAX = 0.15   # F2: max venue-mid divergence
+GHOST_MAX_GAP_CENTS        = 10.0   # F3: edges fatter than this are presumed fake
+GHOST_MAX_SPREAD           = 0.20   # F4: max per-venue bid/ask spread
+GHOST_LOG_FILE             = "ghost_log.jsonl"
+_GHOST_LOG_COOLDOWN_SECONDS = 60    # per (ticker, direction, reason) dedupe window
+_GHOST_SUMMARY_INTERVAL_SECONDS = 3600
 _WS_SUBSCRIBE_CHUNK_SIZE = 50
 _CACHE_STALE_SECONDS  = 300
 _MAX_TIMESTAMP_SKEW_SECONDS = 10
@@ -133,6 +143,13 @@ def utc_now() -> str:
 
 def log_event(obj: dict) -> None:
     with open(LOG_FILE, "a") as f:
+        f.write(json.dumps(obj) + "\n")
+
+
+def _append_ghost_log(obj: dict) -> None:
+    # Separate file from arb_log.jsonl: suppressed ghosts are pattern-analysis
+    # data, not opportunities — keeping them apart keeps arb_log tradeable-only.
+    with open(GHOST_LOG_FILE, "a") as f:
         f.write(json.dumps(obj) + "\n")
 
 
@@ -606,6 +623,98 @@ class OpportunityTracker:
         }
 
 
+def _ghost_filter_reason(kp: dict, pp: dict) -> Optional[str]:
+    """
+    Layer-1 quote-sanity filters (F1/F2/F4 of the ghost-free arbs design).
+    Returns the first failing reason for a (Kalshi, Poly) pair, or None if the
+    pair is executable-grade. F3 (edge cap) is per-direction and lives in
+    match_props. Both venues quote the YES side only (rule 18 / marketDataLite):
+    yes_bid = 1 - no_ask, mid = (yes_ask + yes_bid) / 2.
+    """
+    sides = []
+    for leg in (kp, pp):
+        yes_ask = leg.get("yes_ask")
+        no_ask = leg.get("no_ask")
+        yes_bid = round(1.0 - no_ask, 4) if no_ask is not None else None
+        # F1 — pinned: leg priced as effectively resolved. Checked before the
+        # two-sided requirement so a resolved market with a missing side still
+        # reads "pinned" (the ghost taxonomy's dominant class), not "one_sided".
+        if yes_bid is not None and yes_bid >= GHOST_PIN_PROB:
+            return "pinned"
+        if yes_ask is not None and yes_ask <= round(1.0 - GHOST_PIN_PROB, 4):
+            return "pinned"
+        sides.append((yes_ask, yes_bid))
+    # F2 precondition — both venues two-sided, else mids aren't computable
+    if any(v is None for side in sides for v in side):
+        return "one_sided"
+    # F4 — spread sanity: crossed (< 0) means stale, canyon-wide means dead book
+    for yes_ask, yes_bid in sides:
+        spread = round(yes_ask - yes_bid, 4)
+        if spread < 0 or spread > GHOST_MAX_SPREAD:
+            return "spread"
+    # F2 — mid agreement: 30¢+ canyons mean one book is stale; real cross-venue
+    # mispricings are small divergences
+    mid_k = (sides[0][0] + sides[0][1]) / 2
+    mid_p = (sides[1][0] + sides[1][1]) / 2
+    if round(abs(mid_k - mid_p), 4) > GHOST_MID_DISAGREEMENT_MAX:
+        return "mid_disagreement"
+    return None
+
+
+class GhostFilterStats:
+    """
+    Per-reason suppression counters + deduped ghost_log.jsonl writer + hourly
+    ghost_filter_summary event. Counters count suppressed would-be arbs (pairs
+    that beat ARB_THRESHOLD but failed a filter), not pairs scanned — so the
+    numbers stay comparable to the old ghost_rejected volume.
+    """
+
+    REASONS = ("pinned", "mid_disagreement", "edge_cap", "spread", "one_sided")
+
+    def __init__(self):
+        self.totals = {r: 0 for r in self.REASONS}
+        self._window = {r: 0 for r in self.REASONS}
+        self._last_summary_at = time.time()
+        # (kalshi_ticker, direction, reason) → epoch of last ghost_log write
+        self._log_cooldown: dict[tuple, float] = {}
+
+    def record(self, reason: str, record: dict) -> None:
+        self.totals[reason] += 1
+        self._window[reason] += 1
+        key = (record.get("kalshi_ticker"), record.get("direction"), reason)
+        now = time.time()
+        if now - self._log_cooldown.get(key, 0.0) >= _GHOST_LOG_COOLDOWN_SECONDS:
+            self._log_cooldown[key] = now
+            _append_ghost_log(record)
+
+    def maybe_emit_summary(self) -> None:
+        now = time.time()
+        if now - self._last_summary_at < _GHOST_SUMMARY_INTERVAL_SECONDS:
+            return
+        window_seconds = round(now - self._last_summary_at, 1)
+        self._last_summary_at = now
+        log_event({
+            "event": "ghost_filter_summary",
+            "timestamp": utc_now(),
+            "window_seconds": window_seconds,
+            "suppressed": dict(self._window),
+            "totals": dict(self.totals),
+        })
+        self._window = {r: 0 for r in self.REASONS}
+
+    def total_suppressed(self) -> int:
+        return sum(self.totals.values())
+
+    def status_summary(self) -> str:
+        t = self.totals
+        return (f"ghosts {self.total_suppressed()} "
+                f"(pin {t['pinned']}/mid {t['mid_disagreement']}/edge {t['edge_cap']}"
+                f"/spr {t['spread']}/1side {t['one_sided']})")
+
+
+_ghost_stats = GhostFilterStats()
+
+
 def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
     # Key on date only, keep all candidates per key: doubleheaders repeat the
     # same (player, line, date) — the right game is picked by start time below.
@@ -637,6 +746,11 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
 
         k_yes, k_no = kp["yes_ask"], kp["no_ask"]
         p_yes, p_no = pp["yes_ask"], pp["no_ask"]
+        stat_type = smt.replace("baseball_player_", "").replace("basketball_player_", "")
+        # Pair-level filter verdict (F1/F2/F4) — computed lazily at the first
+        # sub-threshold direction so clean non-arb pairs cost nothing.
+        pair_reason_computed = False
+        pair_reason = None
 
         for direction, leg1_name, leg1_ask, leg1_fee_rate, leg2_name, leg2_ask, leg2_fee_rate in [
             ("Poly YES + Kalshi NO", "Poly YES", p_yes, POLYMARKET_TAKER_FEE_RATE,
@@ -650,29 +764,57 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
             total = leg1_ask * (1 + leg1_fee_rate) + leg2_ask * (1 + leg2_fee_rate)
             if total >= ARB_THRESHOLD:
                 continue
-            # Flag suspiciously deep gaps — likely ghost/stale price on one leg
-            suspicious = total < 0.80
+            gap_cents = round((ARB_THRESHOLD - total) * 100, 2)
+
+            # Ghost filters — gate every would-be arb (replaces the cosmetic
+            # `suspicious` flag, which tagged but never suppressed)
+            if not pair_reason_computed:
+                pair_reason = _ghost_filter_reason(kp, pp)
+                pair_reason_computed = True
+            reason = pair_reason
+            if reason is None and gap_cents > GHOST_MAX_GAP_CENTS:
+                reason = "edge_cap"  # F3: too-good-to-be-true edge
+            if reason is not None:
+                _ghost_stats.record(reason, {
+                    "event": "ghost_suppressed",
+                    "timestamp": utc_now(),
+                    "reason": reason,
+                    "direction": direction,
+                    "kalshi_ticker": kp["ticker"],
+                    "player_name": pp["player_name"],
+                    "stat_type": stat_type,
+                    "line": kp["line"],
+                    "game_start": pp["game_start"],
+                    "kalshi_yes_ask": k_yes,
+                    "kalshi_no_ask": k_no,
+                    "poly_yes_ask": p_yes,
+                    "poly_no_ask": p_no,
+                    "total_cost": round(total, 4),
+                    "gap_cents": gap_cents,
+                })
+                continue
+
             matches.append({
                 "direction": direction,
                 "event_title": pp["event_title"],
                 "game_start": pp["game_start"],
                 "player_name": pp["player_name"],
-                "stat_type": smt.replace("baseball_player_", "").replace("basketball_player_", ""),
+                "stat_type": stat_type,
                 "line": kp["line"],
                 "leg1": leg1_name,
                 "leg1_ask": leg1_ask,
                 "leg2": leg2_name,
                 "leg2_ask": leg2_ask,
                 "total_cost": round(total, 4),
-                "gap_cents": round((ARB_THRESHOLD - total) * 100, 2),
+                "gap_cents": gap_cents,
                 "kalshi_ticker": kp["ticker"],
                 "poly_smt": smt,
-                "suspicious": suspicious,
                 # Raw Poly WS prices at match time — logged for post-hoc staleness analysis
                 "poly_ws_yes_ask": pp.get("yes_ask"),
                 "poly_ws_no_ask": pp.get("no_ask"),
             })
 
+    _ghost_stats.maybe_emit_summary()
     matches.sort(key=lambda x: -x["gap_cents"])
     return matches
 
@@ -842,10 +984,9 @@ _prop_arb_tracker = PropArbTracker()
 
 def _print_and_log_prop_open(arb: dict, timestamp: str) -> None:
     """Shared formatter for a single confirmed prop arb open — print + log_event."""
-    ghost_tag = " [GHOST?]" if arb.get("suspicious") else ""
     print(f"\n--- {arb['event_title']} (game: {arb['game_start']}) ---")
     print(
-        f"  [NEW][{arb['gap_cents']:.1f}¢]{ghost_tag} {arb['player_name']} "
+        f"  [NEW][{arb['gap_cents']:.1f}¢] {arb['player_name']} "
         f"{arb['line']}+ {arb['stat_type']}: "
         f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
         f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
@@ -874,13 +1015,12 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
         print(f"  PROP ARB — {timestamp}")
         print(f"{'='*70}")
         for status, arb in new_or_changed:
-            ghost_tag = " [GHOST?]" if arb.get("suspicious") else ""
             if status == "opened":
                 _print_and_log_prop_open(arb, timestamp)
             else:
                 print(f"\n--- {arb['event_title']} (game: {arb['game_start']}) ---")
                 print(
-                    f"  [UPD][{arb['gap_cents']:.1f}¢]{ghost_tag} {arb['player_name']} "
+                    f"  [UPD][{arb['gap_cents']:.1f}¢] {arb['player_name']} "
                     f"{arb['line']}+ {arb['stat_type']}: "
                     f"{arb['leg1']}={arb['leg1_ask']:.2f} + "
                     f"{arb['leg2']}={arb['leg2_ask']:.2f} = "
@@ -1488,7 +1628,8 @@ async def _poly_props_polling_task() -> None:
                 _last_status_log = time.time()
                 ts = now_utc.strftime("%H:%M:%S")
                 sys.stdout.write(
-                    f"\r[{ts}][WS] No props arb — {len(kalshi_props)}K/{len(poly_props)}P props.".ljust(100) + "\r"
+                    f"\r[{ts}][WS] No props arb — {len(kalshi_props)}K/{len(poly_props)}P props. "
+                    f"{_ghost_stats.status_summary()}".ljust(140) + "\r"
                 )
                 sys.stdout.flush()
 
@@ -1865,7 +2006,8 @@ def _run_props_arb_check_from_ws() -> None:
             _last_status_log = time.time()
             ts = now_utc.strftime("%H:%M:%S")
             sys.stdout.write(
-                f"\r[{ts}][POLY-WS] No props arb — 0K/{len(poly_props)}P props (Kalshi cache stale).".ljust(100) + "\r"
+                f"\r[{ts}][POLY-WS] No props arb — 0K/{len(poly_props)}P props (Kalshi cache stale). "
+                f"{_ghost_stats.status_summary()}".ljust(140) + "\r"
             )
             sys.stdout.flush()
         return
@@ -1896,7 +2038,8 @@ def _run_props_arb_check_from_ws() -> None:
             _last_status_log = time.time()
             ts = now_utc.strftime("%H:%M:%S")
             sys.stdout.write(
-                f"\r[{ts}][POLY-WS] No props arb — {len(kalshi_props)}K/{len(poly_props)}P props.".ljust(100) + "\r"
+                f"\r[{ts}][POLY-WS] No props arb — {len(kalshi_props)}K/{len(poly_props)}P props. "
+                f"{_ghost_stats.status_summary()}".ljust(140) + "\r"
             )
             sys.stdout.flush()
 
