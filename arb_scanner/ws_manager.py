@@ -1001,9 +1001,17 @@ class PropArbTracker:
 
 _prop_arb_tracker = PropArbTracker()
 
+# Console throttle for [UPD] lines: live WS ticks change an open arb's prices
+# every second — print each arb's updates at most this often. Every update is
+# still logged to arb_log.jsonl; only stdout is rate-limited.
+_PROP_UPDATE_PRINT_SECONDS = 30
+# (kalshi_ticker, direction) → epoch of last [NEW]/[UPD] print; pruned on close
+_prop_update_last_print: dict[tuple, float] = {}
+
 
 def _print_and_log_prop_open(arb: dict, timestamp: str) -> None:
     """Shared formatter for a single confirmed prop arb open — print + log_event."""
+    _prop_update_last_print[(arb["kalshi_ticker"], arb["direction"])] = time.time()
     print(f"\n--- {arb['event_title']} (game: {arb['game_start']}) ---")
     print(
         f"  [NEW][{arb['gap_cents']:.1f}¢] {arb['player_name']} "
@@ -1029,12 +1037,32 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
     """
     new_or_changed, closed = _prop_arb_tracker.update(arbs, timestamp)
 
-    # Print new/updated arbs
-    if new_or_changed:
+    # Log every update, but only print each arb at most once per
+    # _PROP_UPDATE_PRINT_SECONDS — WS ticks change prices every second and the
+    # terminal shouldn't scroll a block per tick.
+    now_epoch = time.time()
+    printable = []
+    for status, arb in new_or_changed:
+        if status == "opened":
+            printable.append((status, arb))
+            continue
+        log_event({
+            "event": "prop_arb",
+            "timestamp": timestamp,
+            **arb,
+            "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
+            "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
+        })
+        key = (arb["kalshi_ticker"], arb["direction"])
+        if now_epoch - _prop_update_last_print.get(key, 0.0) >= _PROP_UPDATE_PRINT_SECONDS:
+            _prop_update_last_print[key] = now_epoch
+            printable.append((status, arb))
+
+    if printable:
         print(f"\n{'='*70}")
         print(f"  PROP ARB — {timestamp}")
         print(f"{'='*70}")
-        for status, arb in new_or_changed:
+        for status, arb in printable:
             if status == "opened":
                 _print_and_log_prop_open(arb, timestamp)
             else:
@@ -1047,13 +1075,6 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
                     f"${arb['total_cost']:.2f}"
                 )
                 print(f"         Kalshi: {arb['kalshi_ticker']}")
-                log_event({
-                    "event": "prop_arb",
-                    "timestamp": timestamp,
-                    **arb,
-                    "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
-                    "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
-                })
 
     # Print closed arbs
     if closed:
@@ -1061,6 +1082,7 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
         print(f"  PROP ARB CLOSED — {timestamp}")
         for rec in closed:
             arb = rec["arb"]
+            _prop_update_last_print.pop((arb["kalshi_ticker"], arb["direction"]), None)
             duration = ""
             try:
                 dt = (datetime.fromisoformat(timestamp) - datetime.fromisoformat(rec["opened_at"])).total_seconds()

@@ -315,6 +315,64 @@ class TestPropsFees(unittest.TestCase):
         self.assertEqual(logged[0]["reason"], "threshold_not_met_after_rest")
 
 
+def _upd_arb(leg1_ask=0.45):
+    total = round((leg1_ask + 0.40) * 1.01, 4)
+    return {"kalshi_ticker": "K-UPD-1", "direction": "Kalshi YES + Poly NO",
+            "leg1": "Kalshi YES", "leg1_ask": leg1_ask, "leg2": "Poly NO",
+            "leg2_ask": 0.40, "event_title": "X",
+            "game_start": "2026-07-02T02:10:00Z", "player_name": "A B",
+            "stat_type": "hits", "line": 2, "total_cost": total,
+            "gap_cents": round((0.96 - total) * 100, 2),
+            "poly_smt": "baseball_player_hits",
+            "poly_ws_yes_ask": 0.62, "poly_ws_no_ask": 0.40}
+
+
+class TestPropUpdatePrintThrottle(unittest.TestCase):
+    """Console [UPD] lines are throttled per arb (WS ticks change prices every
+    second — the terminal shouldn't scroll a block per tick). Every update is
+    still logged to arb_log.jsonl; only the printing is rate-limited."""
+
+    def setUp(self):
+        import io
+        self.io = io
+        wm._prop_arb_tracker = wm.PropArbTracker()
+        wm._prop_update_last_print.clear()
+        self.logged = []
+        p = patch.object(wm, "log_event", self.logged.append)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _emit(self, arb):
+        import contextlib
+        buf = self.io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            wm._emit_prop_arbs([arb], "2026-07-02T02:00:00+00:00")
+        return buf.getvalue()
+
+    def test_rapid_updates_logged_but_not_printed(self):
+        out_open = self._emit(_upd_arb(0.45))
+        out_upd = self._emit(_upd_arb(0.44))  # tick 1s later — within throttle
+        self.assertIn("[NEW]", out_open)
+        self.assertNotIn("[UPD]", out_upd)
+        # both the open and the silent update landed in the log
+        self.assertEqual([e["event"] for e in self.logged], ["prop_arb", "prop_arb"])
+
+    def test_update_prints_again_after_throttle_window(self):
+        self._emit(_upd_arb(0.45))
+        key = ("K-UPD-1", "Kalshi YES + Poly NO")
+        wm._prop_update_last_print[key] -= wm._PROP_UPDATE_PRINT_SECONDS + 1
+        out = self._emit(_upd_arb(0.44))
+        self.assertIn("[UPD]", out)
+
+    def test_close_prunes_throttle_state(self):
+        self._emit(_upd_arb(0.45))
+        self._emit_close = self._emit({"kalshi_ticker": "OTHER", "direction": "x",
+                                       **{k: v for k, v in _upd_arb().items()
+                                          if k not in ("kalshi_ticker", "direction")}})
+        wm._emit_prop_arbs([], "2026-07-02T02:01:00+00:00")  # closes everything
+        self.assertEqual(wm._prop_update_last_print, {})
+
+
 class TestDoubleheaderMatching(unittest.TestCase):
     """Fix F: same player+line+date can occur twice (doubleheader) — the match
     must pair markets from the same game (±30 min), like the ML matcher does."""
