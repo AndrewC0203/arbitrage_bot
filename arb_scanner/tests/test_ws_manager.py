@@ -613,5 +613,86 @@ class TestKalshiOrderBookProps(unittest.TestCase):
         self.assertNotIn(PROP_TICKER, self.book._updated_at)
 
 
+class TestKalshiPropsFromBook(unittest.TestCase):
+    """Task 2 (ghost-free arbs Layer 2): the props arb path reads price/qty
+    from the order book and only metadata from KalshiPriceCache — no
+    _CACHE_STALE_SECONDS/updated_at filtering here, since book freshness is
+    guaranteed by seq-gap reconnects."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._price_cache = KalshiPriceCache()
+
+    def _seed_book(self, ticker=PROP_TICKER):
+        wm._order_book.sync_prop_tickers([ticker])
+        snap = _snapshot_msg(ticker=ticker)
+        wm._order_book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+
+    def test_builder_merges_cache_metadata_and_book_quote(self):
+        wm._price_cache._cache[PROP_TICKER] = _cache_entry()
+        self._seed_book()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(len(result), 1)
+        entry = result[0]
+        self.assertEqual(entry["ticker"], PROP_TICKER)
+        self.assertEqual(entry["player_name"], "Jackson Chourio")
+        self.assertEqual(entry["player_norm"], "jackson chourio")
+        self.assertEqual(entry["series"], "KXMLBHR")
+        self.assertEqual(entry["line"], 1)
+        # book-derived ask/qty (verified against TestKalshiOrderBookProps)
+        self.assertEqual(entry["yes_ask"], 0.42)
+        self.assertEqual(entry["no_ask"], 0.63)
+        self.assertEqual(entry["yes_ask_qty"], 608.52)
+        self.assertEqual(entry["no_ask_qty"], 134.18)
+
+    def test_no_book_quote_excludes_cache_only_entry(self):
+        wm._price_cache._cache[PROP_TICKER] = _cache_entry()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(result, [])
+
+    def test_no_cache_metadata_excludes_book_only_quote(self):
+        self._seed_book()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(result, [])
+
+    def test_game_started_over_4h_ago_excluded(self):
+        entry = _cache_entry()
+        entry["game_dt_utc"] = datetime.now(timezone.utc) - timedelta(hours=5)
+        wm._price_cache._cache[PROP_TICKER] = entry
+        self._seed_book()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(result, [])
+
+    def test_stale_cache_updated_at_does_not_exclude_when_book_is_fresh(self):
+        # 20 minutes old cache updated_at (> _CACHE_STALE_SECONDS = 300) but
+        # the book quote is live — proves the arb path no longer depends on
+        # cache freshness.
+        wm._price_cache._cache[PROP_TICKER] = _cache_entry(age_seconds=1200)
+        self._seed_book()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(len(result), 1)
+
+
+class TestMatchPropsQty(unittest.TestCase):
+    """Task 2: match_props surfaces the book qty behind the Kalshi leg of
+    each direction as kalshi_qty_at_best; None when kalshi_props dicts lack
+    qty keys (existing tests, REST-shaped dicts)."""
+
+    def test_kalshi_qty_at_best_matches_kalshi_leg_side(self):
+        kp, pp = _match_inputs(k_yes=0.50, p_no=0.40)
+        kp[0]["yes_ask_qty"] = 12.5
+        kp[0]["no_ask_qty"] = 30.0
+        arbs = wm.match_props(kp, pp)
+        self.assertEqual(len(arbs), 1)
+        self.assertEqual(arbs[0]["leg1"], "Kalshi YES")
+        self.assertEqual(arbs[0]["kalshi_qty_at_best"], 12.5)
+
+    def test_kalshi_qty_at_best_none_when_qty_keys_absent(self):
+        kp, pp = _match_inputs(k_yes=0.50, p_no=0.40)
+        arbs = wm.match_props(kp, pp)
+        self.assertEqual(len(arbs), 1)
+        self.assertIsNone(arbs[0]["kalshi_qty_at_best"])
+
+
 if __name__ == "__main__":
     unittest.main()
