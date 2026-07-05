@@ -22,6 +22,7 @@ from ws_manager import KalshiOrderBook, KalshiPriceCache
 
 ML_TICKER = "KXMLBGAME-26JUL041335MINNYY-MIN"
 PROP_TICKER = "KXMLBHR-26JUL012010CINMIL-MILJCHOURIO11-1"
+PROP_TICKER_NBA = "KXNBAPTS-26JUL021935LALBOS-LALLJAMES25-1"
 
 
 def _snapshot_msg(sid=1, seq=1, ticker=ML_TICKER, yes=None, no=None):
@@ -530,6 +531,86 @@ class TestKalshiReconcile(unittest.TestCase):
         self.assertEqual(len(windows), 2)
         (s1, e1), (s2, e2) = sorted(windows)
         self.assertGreaterEqual(s2, e1)  # second fetch starts after first finishes
+
+
+class TestKalshiOrderBookProps(unittest.TestCase):
+    """Task 1 (ghost-free arbs Layer 2): prop tickers ride the same
+    snapshot/delta channel as ML but must stay invisible to
+    as_kalshi_markets(); seq gaps must also be tracked across non-book
+    ack frames (rule 19) via note_seq()."""
+
+    def setUp(self):
+        self.book = KalshiOrderBook()
+
+    def test_props_snapshot_computes_quotes_from_resting_bids(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER)
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        quotes = self.book.prop_quotes()
+        # no bid max = 0.58 -> yes_ask = 1 - 0.58 = 0.42; yes bid max = 0.37 -> no_ask = 0.63
+        self.assertEqual(quotes[PROP_TICKER]["yes_ask"], 0.42)
+        self.assertEqual(quotes[PROP_TICKER]["no_ask"], 0.63)
+        self.assertEqual(quotes[PROP_TICKER]["yes_ask_qty"], 608.52)
+        self.assertEqual(quotes[PROP_TICKER]["no_ask_qty"], 134.18)
+
+    def test_props_delta_removing_best_no_level_moves_yes_ask(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER)
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        delta = _delta_msg(seq=2, ticker=PROP_TICKER, price="0.5800", delta="-608.52", side="no")
+        self.book.apply_delta(delta["sid"], delta["seq"], delta["msg"])
+        quotes = self.book.prop_quotes()
+        # next-best NO level after removing 0.58 is 0.50 -> yes_ask = 1 - 0.50 = 0.50
+        self.assertEqual(quotes[PROP_TICKER]["yes_ask"], 0.50)
+        self.assertEqual(quotes[PROP_TICKER]["yes_ask_qty"], 10.00)
+
+    def test_seq_gap_on_prop_ticker_signals_resubscribe(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER, seq=1)
+        self.assertTrue(self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"]))
+        delta = _delta_msg(sid=1, seq=3, ticker=PROP_TICKER)  # gap: 1 -> 3
+        self.assertFalse(self.book.apply_delta(delta["sid"], delta["seq"], delta["msg"]))
+
+    def test_note_seq_absorbs_ack_frames_between_book_frames(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER, seq=1)
+        self.assertTrue(self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"]))
+        self.assertTrue(self.book.note_seq(snap["sid"], 2))  # subscribed/ok ack consumes seq 2
+        delta = _delta_msg(sid=1, seq=3, ticker=PROP_TICKER)
+        self.assertTrue(self.book.apply_delta(delta["sid"], delta["seq"], delta["msg"]))
+
+    def test_note_seq_detects_gap(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER, seq=1)
+        self.assertTrue(self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"]))
+        self.assertFalse(self.book.note_seq(snap["sid"], 5))
+
+    def test_prop_ticker_excluded_from_as_kalshi_markets(self):
+        self.book.seed_from_rest([{"ticker": ML_TICKER, "title": "t", "raw": {}}])
+        self.book.sync_prop_tickers([PROP_TICKER])
+        prop_snap = _snapshot_msg(sid=1, seq=1, ticker=PROP_TICKER)
+        self.book.apply_snapshot(prop_snap["sid"], prop_snap["seq"], prop_snap["msg"])
+        ml_snap = _snapshot_msg(sid=2, seq=1, ticker=ML_TICKER)
+        self.book.apply_snapshot(ml_snap["sid"], ml_snap["seq"], ml_snap["msg"])
+        markets = self.book.as_kalshi_markets(datetime.now(timezone.utc))
+        self.assertEqual([m["ticker"] for m in markets], [ML_TICKER])
+
+    def test_unregistered_prop_ticker_snapshot_is_silently_skipped(self):
+        # Not passed to sync_prop_tickers and not seeded as ML -> ignored.
+        snap = _snapshot_msg(ticker=PROP_TICKER_NBA)
+        result = self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        self.assertTrue(result)  # not a gap, just skipped
+        self.assertNotIn(PROP_TICKER_NBA, self.book.prop_quotes())
+
+    def test_sync_prop_tickers_evicts_dropped_ticker_state(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER)
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        self.book.sync_prop_tickers([])
+        self.assertEqual(self.book.prop_quotes(), {})
+        self.assertNotIn(PROP_TICKER, self.book._books)
+        self.assertNotIn(PROP_TICKER, self.book._best_ask)
+        self.assertNotIn(PROP_TICKER, self.book._updated_at)
 
 
 if __name__ == "__main__":
