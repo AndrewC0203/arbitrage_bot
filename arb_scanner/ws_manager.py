@@ -1518,6 +1518,36 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
     for matcher in GLOBAL_MATCHERS:
         matches.extend(matcher.match(kalshi_markets, poly_markets))
 
+    # Ghost gate (F1/F2/F4 pair-level, F3 edge cap) — mirror of match_props.
+    # Suppressed matches flip to is_arb=False so open arbs still close.
+    kalshi_by_ticker = {km["ticker"]: km for km in kalshi_markets}
+    poly_ask_by_side = {(pm["slug"], pm["team_abbr"]): pm["ask"]
+                        for pm in poly_markets}
+    for m in matches:
+        if not m["is_arb"]:
+            continue
+        reason = _ml_ghost_filter_reason(m, kalshi_by_ticker, poly_ask_by_side)
+        if reason is None and m["gap_cents"] > GHOST_MAX_GAP_CENTS:
+            reason = "edge_cap"
+        if reason is not None:
+            m["is_arb"] = False
+            _ml_ghost_stats.record(reason, {
+                "event": "ghost_suppressed",
+                "timestamp": utc_now(),
+                "scope": "moneyline",
+                "reason": reason,
+                "direction": "Kalshi YES + Poly YES",
+                "kalshi_ticker": m["kalshi_ticker"],
+                "market_name": m["market_name"],
+                "kalshi_team": m.get("kalshi_team"),
+                "polymarket_team": m.get("polymarket_team"),
+                "kalshi_ask": m["kalshi_ask"],
+                "polymarket_ask": m["polymarket_ask"],
+                "total_cost": m["total_cost"],
+                "gap_cents": m["gap_cents"],
+            })
+    _ml_ghost_stats.maybe_emit_summary()
+
     try:
         skew = abs((datetime.fromisoformat(kalshi_updated_at) -
                     datetime.fromisoformat(poly_fetched_at)).total_seconds())

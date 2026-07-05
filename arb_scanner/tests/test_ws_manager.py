@@ -890,5 +890,64 @@ class TestGhostStatsScope(unittest.TestCase):
         self.assertEqual(mock_log.call_args[0][0]["scope"], "moneyline")
 
 
+class TestMoneylineGhostGate(unittest.TestCase):
+    """A would-be ML arb failing F1-F4 (or the F3 edge cap) must be flipped
+    to is_arb=False before _ml_tracker.process — no opened event, one
+    ghost_log record."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._ml_tracker = wm.OpportunityTracker()
+        wm._ml_ghost_stats = wm.GhostFilterStats(scope="moneyline")
+
+    def _run_check(self, matches, kalshi_markets, poly_markets):
+        with patch.object(wm, "GLOBAL_MATCHERS", [type("M", (), {
+                 "match": staticmethod(lambda k, p: matches)})()]), \
+             patch.object(wm._order_book, "as_kalshi_markets",
+                          lambda now: kalshi_markets), \
+             patch("ws_manager.log_event") as mock_log, \
+             patch("ws_manager._append_ghost_log") as mock_ghost:
+            wm._poly_ml_cache = (poly_markets, wm.utc_now())
+            wm.check_arb_moneyline(wm.utc_now())
+        return mock_log, mock_ghost
+
+    def _match(self, gap=1.5, **kw):
+        m = {"market_name": "X", "kalshi_ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE",
+             "kalshi_team": "cle", "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+             "polymarket_slug": "s", "polymarket_team": "cws",
+             "polymarket_ask": 0.645, "polymarket_taker_fee": 0.0134,
+             "total_cost": 0.945, "gap_cents": gap, "is_arb": True}
+        m.update(kw)
+        return m
+
+    def test_ghost_arb_suppressed_not_opened(self):
+        kalshi = [{"ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE", "title": "X",
+                   "ask": 0.29, "yes_bid": None, "taker_fee": 0.0144, "raw": {}}]
+        poly = [{"slug": "s", "team_abbr": "cws", "ask": 0.645, "taker_fee": 0.0134,
+                 "title": "X", "raw": {}}]
+        mock_log, mock_ghost = self._run_check([self._match()], kalshi, poly)
+        opened = [c for c in mock_log.call_args_list
+                  if c[0][0].get("event") == "opened"]
+        self.assertEqual(opened, [])            # one_sided (yes_bid None)
+        self.assertEqual(mock_ghost.call_count, 1)
+        self.assertEqual(mock_ghost.call_args[0][0]["scope"], "moneyline")
+
+    def test_fat_edge_suppressed_by_edge_cap(self):
+        # Soccer fixture: for a two-way pair, F2 makes gap>10c unreachable once
+        # the filter passes (mid agreement bounds the gap), so the only way to
+        # exercise the call-site edge cap is a three-way (soccer) match, where
+        # _ml_ghost_filter_reason skips the Poly complement/F2 checks by design.
+        kalshi = [{"ticker": "KXEPL-26AUG01ARSCHE-ARS", "title": "X",
+                   "ask": 0.29, "yes_bid": 0.28, "taker_fee": 0.0144, "raw": {}}]
+        poly = [{"slug": "s", "team_abbr": "che", "ask": 0.50, "taker_fee": 0.0125,
+                 "title": "X", "raw": {}}]
+        m = self._match(gap=12.0, kalshi_ticker="KXEPL-26AUG01ARSCHE-ARS",
+                        kalshi_team="ars", polymarket_team="che",
+                        polymarket_ask=0.50, total_cost=0.84)
+        _, mock_ghost = self._run_check([m], kalshi, poly)
+        self.assertEqual(mock_ghost.call_args[0][0]["reason"], "edge_cap")
+        self.assertFalse(m["is_arb"])
+
+
 if __name__ == "__main__":
     unittest.main()
