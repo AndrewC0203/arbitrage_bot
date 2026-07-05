@@ -543,6 +543,20 @@ class TestKalshiOrderBookProps(unittest.TestCase):
         self.assertNotIn(PROP_TICKER, self.book._best_ask)
         self.assertNotIn(PROP_TICKER, self.book._updated_at)
 
+    def test_reset_connection_clears_prop_book_state(self):
+        # Props have no _CACHE_STALE_SECONDS backstop, so a retained book from
+        # before a disconnect would serve pre-gap quotes until fresh deltas
+        # arrive — reset_connection() must drop it so props go dark instead.
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER)
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        self.assertIn(PROP_TICKER, self.book.prop_quotes())
+        self.book.reset_connection()
+        self.assertNotIn(PROP_TICKER, self.book.prop_quotes())
+        self.assertNotIn(PROP_TICKER, self.book._books)
+        self.assertNotIn(PROP_TICKER, self.book._best_ask)
+        self.assertNotIn(PROP_TICKER, self.book._updated_at)
+
 
 class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
     """Task 3 (ghost-free arbs Layer 2): props now ride orderbook_snapshot/

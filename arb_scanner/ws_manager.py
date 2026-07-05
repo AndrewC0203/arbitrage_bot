@@ -327,8 +327,18 @@ class KalshiOrderBook:
         return book
 
     def reset_connection(self) -> None:
-        """Clear per-sid seq state. Call on every (re)connect before subscribing."""
+        """Clear per-sid seq state and drop prop book state. Call on every
+        (re)connect before subscribing. ML books keep their state across the
+        gap — as_kalshi_markets() has the _CACHE_STALE_SECONDS backstop to
+        evict anything that goes stale — but props are book-or-nothing (no
+        such backstop by design), so a retained book would serve pre-gap
+        quotes for up to the reconnect+resubscribe window; dropping it here
+        makes props go dark until fresh snapshots arrive."""
         self._sid_seq.clear()
+        for ticker in self._prop_tickers:
+            self._books.pop(ticker, None)
+            self._best_ask.pop(ticker, None)
+            self._updated_at.pop(ticker, None)
 
     def _check_seq(self, sid: Optional[int], seq: Optional[int]) -> bool:
         """Validate + advance the per-sid seq counter. Returns False on a gap."""
