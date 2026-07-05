@@ -282,6 +282,7 @@ class KalshiOrderBook:
         self._sid_seq: dict[int, int] = {}                # sid → last seq seen
         self._updated_at: dict[str, datetime] = {}
         self._metadata: dict[str, dict] = {}              # ticker → {title, raw}
+        self._prop_tickers: set[str] = set()
 
     def seed_from_rest(self, markets: list[dict]) -> list[str]:
         """Store metadata from initial REST fetch. Returns ticker list for WS subscription."""
@@ -299,6 +300,17 @@ class KalshiOrderBook:
             if gdt is not None and gdt.date() >= yesterday:
                 result.append(ticker)
         return result
+
+    def sync_prop_tickers(self, tickers) -> None:
+        """Register the live prop-ticker set for the book channel. Tickers
+        dropped from the set have their book state evicted; metadata for
+        props lives in KalshiPriceCache and is never touched here."""
+        new_tickers = set(tickers)
+        for ticker in self._prop_tickers - new_tickers:
+            self._books.pop(ticker, None)
+            self._best_ask.pop(ticker, None)
+            self._updated_at.pop(ticker, None)
+        self._prop_tickers = new_tickers
 
     @staticmethod
     def _parse_levels(levels) -> dict[int, float]:
@@ -318,6 +330,20 @@ class KalshiOrderBook:
         """Clear per-sid seq state. Call on every (re)connect before subscribing."""
         self._sid_seq.clear()
 
+    def _check_seq(self, sid: Optional[int], seq: Optional[int]) -> bool:
+        """Validate + advance the per-sid seq counter. Returns False on a gap."""
+        if sid is not None and seq is not None:
+            last = self._sid_seq.get(sid)
+            if last is not None and seq != last + 1:
+                return False
+            self._sid_seq[sid] = seq
+        return True
+
+    def note_seq(self, sid: Optional[int], seq: Optional[int]) -> bool:
+        """Consume a seq number from a non-book frame (subscribed/ok ack)
+        that shares the sid's seq stream (rule 19). Returns False on a gap."""
+        return self._check_seq(sid, seq)
+
     def apply_snapshot(self, sid: Optional[int], seq: Optional[int], payload: dict) -> bool:
         """
         Replace book with full snapshot from an orderbook_snapshot payload.
@@ -325,13 +351,10 @@ class KalshiOrderBook:
         book, but seq is per-sid across all tickers, so the missed messages
         may have been deltas for other tickers on the stream.
         """
-        if sid is not None and seq is not None:
-            last = self._sid_seq.get(sid)
-            if last is not None and seq != last + 1:
-                return False
-            self._sid_seq[sid] = seq
+        if not self._check_seq(sid, seq):
+            return False
         ticker = payload.get("market_ticker")
-        if not ticker or ticker not in self._metadata:
+        if not ticker or (ticker not in self._metadata and ticker not in self._prop_tickers):
             return True
         self._books[ticker] = {
             "yes": self._parse_levels(payload.get("yes_dollars_fp")),
@@ -347,14 +370,11 @@ class KalshiOrderBook:
         the caller must reconnect for fresh snapshots (a gap on a sid stream
         invalidates every book on that stream, not just this ticker's).
         """
-        if sid is not None and seq is not None:
-            last = self._sid_seq.get(sid)
-            if last is not None and seq != last + 1:
-                return False
-            self._sid_seq[sid] = seq
+        if not self._check_seq(sid, seq):
+            return False
 
         ticker = payload.get("market_ticker")
-        if not ticker or ticker not in self._metadata:
+        if not ticker or (ticker not in self._metadata and ticker not in self._prop_tickers):
             return True  # unknown ticker, silently skip
 
         side = payload.get("side")
@@ -403,6 +423,33 @@ class KalshiOrderBook:
                 "taker_fee": round(ask * KALSHI_TAKER_FEE_RATE, 6),
                 "raw": meta["raw"],
             })
+        return result
+
+    def prop_quotes(self) -> dict[str, dict]:
+        """Best yes/no ask + resting qty for registered prop tickers, derived
+        the same way as ML (ask = 1 - opposing side's best bid) but kept out
+        of as_kalshi_markets() — props are matched via match_props, not
+        matcher.match()."""
+        result = {}
+        for ticker in self._prop_tickers:
+            book = self._books.get(ticker)
+            if not book:
+                continue
+            yes_levels = book.get("yes", {})
+            no_levels = book.get("no", {})
+            yes_bid_c = max(yes_levels) if yes_levels else None
+            no_bid_c = max(no_levels) if no_levels else None
+            yes_ask = (100 - no_bid_c) / 100 if no_bid_c is not None else None
+            no_ask = (100 - yes_bid_c) / 100 if yes_bid_c is not None else None
+            if yes_ask is None and no_ask is None:
+                continue
+            result[ticker] = {
+                "yes_ask": yes_ask,
+                "no_ask": no_ask,
+                "yes_ask_qty": no_levels.get(no_bid_c) if no_bid_c is not None else None,
+                "no_ask_qty": yes_levels.get(yes_bid_c) if yes_bid_c is not None else None,
+                "updated_at": self._updated_at.get(ticker),
+            }
         return result
 
 
