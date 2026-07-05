@@ -560,6 +560,28 @@ class TestKalshiOrderBookProps(unittest.TestCase):
         self.assertNotIn(PROP_TICKER, self.book._updated_at)
 
 
+class TestAsKalshiMarketsYesBid(unittest.TestCase):
+    """Task 1 (ghost-free arbs Layer 2): as_kalshi_markets() exposes yes_bid
+    (best resting YES bid in dollars) for Layer 2 moneyline ghost filters to
+    consume."""
+
+    def setUp(self):
+        self.book = KalshiOrderBook()
+        self.book.seed_from_rest([{"ticker": ML_TICKER, "title": "t", "raw": {}}])
+
+    def test_yes_bid_is_best_yes_level(self):
+        snap = _snapshot_msg()  # default yes levels: 0.01 and 0.37
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        m = self.book.as_kalshi_markets(datetime.now(timezone.utc))[0]
+        self.assertEqual(m["yes_bid"], 0.37)
+
+    def test_yes_bid_none_when_yes_side_empty(self):
+        snap = _snapshot_msg(yes=[], no=[["0.5800", "608.52"]])
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        m = self.book.as_kalshi_markets(datetime.now(timezone.utc))[0]
+        self.assertIsNone(m["yes_bid"])
+
+
 class TestOrderBookFloatDust(unittest.TestCase):
     """Deltas arrive as 2-decimal dollar strings but were accumulated as raw
     floats: fully consuming a level can leave a +1e-13 residue, which

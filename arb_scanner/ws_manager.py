@@ -431,10 +431,13 @@ class KalshiOrderBook:
             updated = self._updated_at.get(ticker)
             if updated is None or updated < stale_cutoff:
                 continue
+            yes_levels = self._books.get(ticker, {}).get("yes", {})
+            yes_bid_c = max((p for p, q in yes_levels.items() if q > 0), default=None)
             result.append({
                 "ticker": ticker,
                 "title": meta["title"],
                 "ask": ask,
+                "yes_bid": yes_bid_c / 100.0 if yes_bid_c is not None else None,
                 "taker_fee": round(kalshi_taker_fee(ask), 6),
                 "raw": meta["raw"],
             })
