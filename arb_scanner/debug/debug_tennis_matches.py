@@ -15,14 +15,13 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from matchers.tennis import TennisMatcher, normalize_name
+from fees import kalshi_taker_fee, polymarket_taker_fee
 
 load_dotenv()
 
 KALSHI_BASE = "https://api.elections.kalshi.com/trade-api/v2"
 POLYMARKET_US_GATEWAY = "https://gateway.polymarket.us"
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=8)
-KALSHI_TAKER_FEE_RATE = 0.01
-POLYMARKET_TAKER_FEE_RATE = 0.01
 OUTPUT_FILE = "debug/tennis_matches.json"
 
 
@@ -55,7 +54,7 @@ async def fetch_kalshi_tennis(session: aiohttp.ClientSession) -> list[dict]:
                     "ticker": t_ticker,
                     "title": title,
                     "ask": yes_ask,
-                    "taker_fee": round(yes_ask * KALSHI_TAKER_FEE_RATE, 6),
+                    "taker_fee": round(kalshi_taker_fee(yes_ask), 6),
                 })
             except (TypeError, ValueError, KeyError):
                 continue
@@ -102,7 +101,7 @@ async def fetch_polymarket_tennis(session: aiohttp.ClientSession) -> list[dict]:
                             "team_abbr": team_abbr,
                             "team_name": team_name,
                             "ask": ask,
-                            "taker_fee": round(ask * POLYMARKET_TAKER_FEE_RATE, 6),
+                            "taker_fee": round(polymarket_taker_fee(ask), 6),
                         })
                 except (TypeError, ValueError, KeyError):
                     continue

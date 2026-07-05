@@ -56,6 +56,7 @@ from matchers.baseball import (
 from matchers.basketball import BasketballMatcher
 from matchers.soccer import SoccerMatcher
 from matchers.tennis import TennisMatcher
+from fees import kalshi_taker_fee, polymarket_taker_fee
 
 SPORTS_CONFIGS = [
     {
@@ -98,8 +99,6 @@ KALSHI_WS_URL         = "wss://api.elections.kalshi.com/trade-api/ws/v2"
 KALSHI_BASE           = "https://api.elections.kalshi.com/trade-api/v2"
 POLYMARKET_US_GATEWAY = "https://gateway.polymarket.us"
 ARB_THRESHOLD         = 0.96
-KALSHI_TAKER_FEE_RATE = 0.01
-POLYMARKET_TAKER_FEE_RATE = 0.01
 POLY_POLL_SECONDS     = 2
 LOG_FILE              = "arb_log.jsonl"
 
@@ -432,7 +431,7 @@ class KalshiOrderBook:
                 "ticker": ticker,
                 "title": meta["title"],
                 "ask": ask,
-                "taker_fee": round(ask * KALSHI_TAKER_FEE_RATE, 6),
+                "taker_fee": round(kalshi_taker_fee(ask), 6),
                 "raw": meta["raw"],
             })
         return result
@@ -803,16 +802,16 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
         pair_reason_computed = False
         pair_reason = None
 
-        for direction, leg1_name, leg1_ask, leg1_fee_rate, leg2_name, leg2_ask, leg2_fee_rate, kalshi_qty in [
-            ("Poly YES + Kalshi NO", "Poly YES", p_yes, POLYMARKET_TAKER_FEE_RATE,
-             "Kalshi NO", k_no, KALSHI_TAKER_FEE_RATE, kp.get("no_ask_qty")),
-            ("Kalshi YES + Poly NO", "Kalshi YES", k_yes, KALSHI_TAKER_FEE_RATE,
-             "Poly NO", p_no, POLYMARKET_TAKER_FEE_RATE, kp.get("yes_ask_qty")),
+        for direction, leg1_name, leg1_ask, leg1_fee_fn, leg2_name, leg2_ask, leg2_fee_fn, kalshi_qty in [
+            ("Poly YES + Kalshi NO", "Poly YES", p_yes, polymarket_taker_fee,
+             "Kalshi NO", k_no, kalshi_taker_fee, kp.get("no_ask_qty")),
+            ("Kalshi YES + Poly NO", "Kalshi YES", k_yes, kalshi_taker_fee,
+             "Poly NO", p_no, polymarket_taker_fee, kp.get("yes_ask_qty")),
         ]:
             if leg1_ask is None or leg2_ask is None:
                 continue
-            # Per-leg taker fees (CLAUDE.md: total_cost = asks + 1% of each ask)
-            total = leg1_ask * (1 + leg1_fee_rate) + leg2_ask * (1 + leg2_fee_rate)
+            # Per-leg taker fees (CLAUDE.md: total_cost = asks + parabolic fee per leg)
+            total = leg1_ask + leg1_fee_fn(leg1_ask) + leg2_ask + leg2_fee_fn(leg2_ask)
             if total >= ARB_THRESHOLD:
                 continue
             gap_cents = round((ARB_THRESHOLD - total) * 100, 2)
@@ -920,8 +919,8 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
 
         # Recompute with the same fee-inclusive formula match_props uses
         poly_ask = arb["leg2_ask"] if "Kalshi" in arb["leg1"] else arb["leg1_ask"]
-        total = (confirmed_k_ask * (1 + KALSHI_TAKER_FEE_RATE)
-                 + poly_ask * (1 + POLYMARKET_TAKER_FEE_RATE))
+        total = (confirmed_k_ask + kalshi_taker_fee(confirmed_k_ask)
+                 + poly_ask + polymarket_taker_fee(poly_ask))
 
         if total >= ARB_THRESHOLD:
             log_event({
@@ -932,8 +931,8 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
                 "direction": direction,
                 "ws_kalshi_ask": ws_kalshi_ask,
                 "rest_kalshi_ask": confirmed_k_ask,
-                "ws_total": round(ws_kalshi_ask * (1 + KALSHI_TAKER_FEE_RATE)
-                                  + poly_ask * (1 + POLYMARKET_TAKER_FEE_RATE), 4),
+                "ws_total": round(ws_kalshi_ask + kalshi_taker_fee(ws_kalshi_ask)
+                                  + poly_ask + polymarket_taker_fee(poly_ask), 4),
                 "rest_total": round(total, 4),
                 "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
                 "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
@@ -1204,7 +1203,7 @@ async def fetch_kalshi(session: aiohttp.ClientSession) -> tuple[list[dict], str]
                     continue
                 if yes_ask <= 0 or yes_ask >= 1:
                     continue
-                taker_fee = round(yes_ask * KALSHI_TAKER_FEE_RATE, 6)
+                taker_fee = round(kalshi_taker_fee(yes_ask), 6)
                 markets.append({
                     "ticker": t_ticker,
                     "title": title,
@@ -1259,7 +1258,7 @@ async def fetch_polymarket(session: aiohttp.ClientSession) -> tuple[list[dict], 
                         ask = float(quote.get("value", 0)) if quote else 0.0
                         if ask <= 0 or ask >= 1:
                             continue
-                        taker_fee = round(ask * POLYMARKET_TAKER_FEE_RATE, 6)
+                        taker_fee = round(polymarket_taker_fee(ask), 6)
                         markets.append({
                             "slug": m.get("slug", ""),
                             "title": m.get("question") or m.get("slug", ""),
@@ -2061,7 +2060,7 @@ def _rebuild_poly_ml_cache() -> None:
                 "team_abbr": entry["yes_abbr"],
                 "team_name": entry.get("yes_name", ""),
                 "ask": yes_ask,
-                "taker_fee": round(yes_ask * POLYMARKET_TAKER_FEE_RATE, 6),
+                "taker_fee": round(polymarket_taker_fee(yes_ask), 6),
                 "raw": entry["raw"],
             })
         no_ask = entry.get("no_ask")
@@ -2073,7 +2072,7 @@ def _rebuild_poly_ml_cache() -> None:
                 "team_abbr": entry["no_abbr"],
                 "team_name": entry.get("no_name", ""),
                 "ask": no_ask,
-                "taker_fee": round(no_ask * POLYMARKET_TAKER_FEE_RATE, 6),
+                "taker_fee": round(polymarket_taker_fee(no_ask), 6),
                 "raw": entry["raw"],
             })
         if latest_update is None or (updated and updated > latest_update):
@@ -2100,11 +2099,11 @@ def _patch_poly_ml_entry(slug: str, yes_ask: Optional[float], no_ask: Optional[f
     if yes_ask is not None and "yes" in slots:
         m = markets[slots["yes"]]
         m["ask"] = yes_ask
-        m["taker_fee"] = round(yes_ask * POLYMARKET_TAKER_FEE_RATE, 6)
+        m["taker_fee"] = round(polymarket_taker_fee(yes_ask), 6)
     if no_ask is not None and "no" in slots:
         m = markets[slots["no"]]
         m["ask"] = no_ask
-        m["taker_fee"] = round(no_ask * POLYMARKET_TAKER_FEE_RATE, 6)
+        m["taker_fee"] = round(polymarket_taker_fee(no_ask), 6)
     _poly_ml_cache = (markets, utc_now())
 
 
