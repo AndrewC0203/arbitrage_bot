@@ -1520,7 +1520,9 @@ def _apply_book_frame(apply_fn, sid, seq, payload: dict, ticker: str) -> bool:
     at ~241 msg/s of deep-book churn across ~951 props, sweeping on every
     frame (full prop_quotes() + poly list rebuild + match_props) is enough to
     lag the shared event loop. Moneyline sweeps on every applied frame, same
-    as before. Returns True if the caller should reconnect (seq gap) — a
+    as before. The prop sweep is additionally coalesced (_request_props_sweep)
+    so connect-time bursts collapse into one trailing sweep instead of firing
+    per frame. Returns True if the caller should reconnect (seq gap) — a
     skipped/unregistered ticker's None→None signature never fires either way.
     """
     is_prop = ticker.split("-")[0] in SERIES_TO_SMT
@@ -1529,7 +1531,7 @@ def _apply_book_frame(apply_fn, sid, seq, payload: dict, ticker: str) -> bool:
         return True
     if is_prop:
         if _order_book.top_signature(ticker) != before:
-            _run_props_arb_check_from_ws()
+            _request_props_sweep()
     else:
         check_arb_moneyline(utc_now())
     return False
@@ -2170,8 +2172,43 @@ def _reconstruct_poly_props_list() -> list[dict]:
     return result
 
 
+# Coalescer for the props sweep: connect-time bursts (thousands of prop
+# snapshots, each moving a top-of-book from None) and Poly seed storms would
+# otherwise fire a full sweep per frame — enough sustained CPU to starve the
+# event loop and miss keepalive pongs (observed live 2026-07-05: 1011 ping
+# timeouts at 2793 subscribed props). Leading edge fires immediately; extra
+# requests inside the window collapse into one trailing sweep so the last
+# update is never dropped.
+_PROPS_SWEEP_MIN_INTERVAL_SECONDS = 0.1
+_props_sweep_last_at = 0.0     # time.monotonic(); 0.0 = never swept
+_props_sweep_pending = False
+
+
+def _request_props_sweep() -> None:
+    global _props_sweep_last_at, _props_sweep_pending
+    if _props_sweep_pending:
+        return
+    now = time.monotonic()
+    wait = _PROPS_SWEEP_MIN_INTERVAL_SECONDS - (now - _props_sweep_last_at)
+    if wait <= 0:
+        _props_sweep_last_at = now
+        _run_props_arb_check_from_ws()
+    else:
+        _props_sweep_pending = True
+        asyncio.get_running_loop().call_later(wait, _run_deferred_props_sweep)
+
+
+def _run_deferred_props_sweep() -> None:
+    global _props_sweep_last_at, _props_sweep_pending
+    _props_sweep_pending = False
+    _props_sweep_last_at = time.monotonic()
+    _run_props_arb_check_from_ws()
+
+
 def _run_props_arb_check_from_ws() -> None:
-    """Trigger props arb check using current WS cache + Kalshi price cache."""
+    """Trigger props arb check using current WS cache + Kalshi price cache.
+    Called directly by the two 60s-cadence reconcile tasks; the hot WS frame
+    paths go through _request_props_sweep() instead so bursts coalesce."""
     global _last_status_log
     now_utc = datetime.now(timezone.utc)
     _price_cache.purge_old_date(now_utc.date())
@@ -2287,7 +2324,7 @@ async def _handle_poly_ws_message(data: dict) -> None:
         if is_ml:
             check_arb_moneyline(utc_now())
         if is_props:
-            _run_props_arb_check_from_ws()
+            _request_props_sweep()
         return
 
     # Full market data (order book) — not subscribed but handle gracefully

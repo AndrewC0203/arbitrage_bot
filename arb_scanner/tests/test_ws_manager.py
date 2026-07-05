@@ -573,16 +573,18 @@ class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
         ])
         wm._order_book.sync_prop_tickers([PROP_TICKER])
         wm._poly_ml_cache = None
+        wm._props_sweep_last_at = 0.0
+        wm._props_sweep_pending = False
 
     def test_prop_snapshot_triggers_props_check_not_moneyline(self):
-        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check, \
+        with patch.object(wm, "_request_props_sweep") as props_check, \
              patch.object(wm, "check_arb_moneyline") as ml_check:
             wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER))
         props_check.assert_called_once()
         ml_check.assert_not_called()
 
     def test_ml_snapshot_triggers_moneyline_check_not_props(self):
-        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check, \
+        with patch.object(wm, "_request_props_sweep") as props_check, \
              patch.object(wm, "check_arb_moneyline") as ml_check:
             wm._handle_ws_message(_snapshot_msg(ticker=ML_TICKER))
         ml_check.assert_called_once()
@@ -594,15 +596,20 @@ class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
         self.assertTrue(needs_resub)
 
     def test_ack_frame_consumes_seq_no_phantom_gap(self):
-        self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
-        self.assertFalse(wm._handle_ws_message({"type": "subscribed", "sid": 1, "seq": 2}))
-        self.assertFalse(wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=3)))
+        # Not about sweep firing (that's covered elsewhere) — patch out the
+        # coalescer since its deferred branch needs a running event loop that
+        # this synchronous test doesn't provide.
+        with patch.object(wm, "_request_props_sweep"):
+            self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
+            self.assertFalse(wm._handle_ws_message({"type": "subscribed", "sid": 1, "seq": 2}))
+            self.assertFalse(wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=3)))
 
     def test_ok_ack_frame_consumes_seq_no_phantom_gap(self):
         # Rule 19: BOTH ack types (subscribed AND ok) consume seq on the sid.
-        self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
-        self.assertFalse(wm._handle_ws_message({"type": "ok", "sid": 1, "seq": 2}))
-        self.assertFalse(wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=3)))
+        with patch.object(wm, "_request_props_sweep"):
+            self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
+            self.assertFalse(wm._handle_ws_message({"type": "ok", "sid": 1, "seq": 2}))
+            self.assertFalse(wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=3)))
 
     def test_ack_frame_gap_signals_resubscribe(self):
         self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
@@ -613,7 +620,7 @@ class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
         # Snapshot's best NO bid is 0.58 (qty 608.52); removing it moves the
         # best NO bid to 0.50 — top-of-book changes, so the sweep must fire.
         wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
-        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check:
+        with patch.object(wm, "_request_props_sweep") as props_check:
             wm._handle_ws_message(
                 _delta_msg(ticker=PROP_TICKER, seq=2, price="0.5800", delta="-608.52", side="no")
             )
@@ -624,16 +631,61 @@ class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
         # best at 0.58 — removing the deep level doesn't move the top of
         # book, so the sweep must NOT fire.
         wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
-        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check:
+        with patch.object(wm, "_request_props_sweep") as props_check:
             wm._handle_ws_message(
                 _delta_msg(ticker=PROP_TICKER, seq=2, price="0.5000", delta="-10.00", side="no")
             )
         props_check.assert_not_called()
 
     def test_prop_first_snapshot_fires_props_check(self):
-        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check:
+        with patch.object(wm, "_request_props_sweep") as props_check:
             wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
         props_check.assert_called_once()
+
+
+class TestPropsSweepCoalescer(unittest.TestCase):
+    """Connect-time bursts (thousands of prop snapshots) and Poly seed storms
+    must not fire one full sweep per frame — that sustained CPU starves the
+    event loop and misses keepalive pongs (observed live 2026-07-05: 1011
+    ping timeouts at 2793 subscribed props). _request_props_sweep() coalesces
+    those into a leading sweep plus at most one trailing sweep per window."""
+
+    def setUp(self):
+        wm._props_sweep_last_at = 0.0
+        wm._props_sweep_pending = False
+
+    def test_first_request_fires_immediately(self):
+        with patch.object(wm, "_run_props_arb_check_from_ws") as sweep:
+            wm._props_sweep_last_at = 0.0
+            wm._request_props_sweep()
+        sweep.assert_called_once()
+
+    def test_burst_collapses_to_leading_plus_one_trailing_sweep(self):
+        import asyncio
+
+        calls = []
+
+        async def scenario():
+            with patch.object(wm, "_run_props_arb_check_from_ws", lambda: calls.append(1)):
+                wm._request_props_sweep()
+                for _ in range(5):
+                    wm._request_props_sweep()
+                self.assertEqual(len(calls), 1)
+                await asyncio.sleep(0.15)
+            self.assertEqual(len(calls), 2)
+
+        asyncio.run(scenario())
+
+    def test_requests_beyond_interval_both_fire_immediately(self):
+        with patch.object(wm, "_run_props_arb_check_from_ws") as sweep:
+            wm._props_sweep_last_at = 0.0
+            wm._request_props_sweep()
+            self.assertEqual(sweep.call_count, 1)
+            # Simulate more than _PROPS_SWEEP_MIN_INTERVAL_SECONDS elapsed
+            # without a real sleep.
+            wm._props_sweep_last_at -= wm._PROPS_SWEEP_MIN_INTERVAL_SECONDS + 0.01
+            wm._request_props_sweep()
+        self.assertEqual(sweep.call_count, 2)
 
 
 class TestKalshiPropsFromBook(unittest.TestCase):
