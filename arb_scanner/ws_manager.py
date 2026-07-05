@@ -558,6 +558,12 @@ class KalshiPriceCache:
         yesterday = today - timedelta(days=1)
         return [t for t, e in self._cache.items() if e["game_dt_utc"].date() >= yesterday]
 
+    def metadata_entries(self) -> list[dict]:
+        """Raw cached entry dicts — metadata authority (series/ticker/
+        player_name/player_norm/line/game_dt_utc). No freshness filtering;
+        the arb path reads prices/qty from the order book, not this cache."""
+        return list(self._cache.values())
+
     @staticmethod
     def _parse_price(raw) -> Optional[float]:
         if raw is None:
@@ -805,11 +811,11 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
         pair_reason_computed = False
         pair_reason = None
 
-        for direction, leg1_name, leg1_ask, leg1_fee_rate, leg2_name, leg2_ask, leg2_fee_rate in [
+        for direction, leg1_name, leg1_ask, leg1_fee_rate, leg2_name, leg2_ask, leg2_fee_rate, kalshi_qty in [
             ("Poly YES + Kalshi NO", "Poly YES", p_yes, POLYMARKET_TAKER_FEE_RATE,
-             "Kalshi NO", k_no, KALSHI_TAKER_FEE_RATE),
+             "Kalshi NO", k_no, KALSHI_TAKER_FEE_RATE, kp.get("no_ask_qty")),
             ("Kalshi YES + Poly NO", "Kalshi YES", k_yes, KALSHI_TAKER_FEE_RATE,
-             "Poly NO", p_no, POLYMARKET_TAKER_FEE_RATE),
+             "Poly NO", p_no, POLYMARKET_TAKER_FEE_RATE, kp.get("yes_ask_qty")),
         ]:
             if leg1_ask is None or leg2_ask is None:
                 continue
@@ -865,6 +871,7 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
                 # Raw Poly WS prices at match time — logged for post-hoc staleness analysis
                 "poly_ws_yes_ask": pp.get("yes_ask"),
                 "poly_ws_no_ask": pp.get("no_ask"),
+                "kalshi_qty_at_best": kalshi_qty,
             })
 
     _ghost_stats.maybe_emit_summary()
@@ -2058,6 +2065,36 @@ def _patch_poly_ml_entry(slug: str, yes_ask: Optional[float], no_ask: Optional[f
     _poly_ml_cache = (markets, utc_now())
 
 
+def _kalshi_props_from_book(now: datetime) -> list[dict]:
+    """Build kalshi_props list from the order book (price/qty authority) +
+    KalshiPriceCache (metadata authority) for match_props() consumption.
+    Only tickers present in BOTH the cache and the book emit — this is the
+    metadata-validated-before-arb-check requirement. No _CACHE_STALE_SECONDS/
+    updated_at filtering: book freshness is guaranteed by seq-gap reconnects."""
+    stale_game_cutoff = now - timedelta(hours=4)
+    quotes = _order_book.prop_quotes()
+    result = []
+    for entry in _price_cache.metadata_entries():
+        quote = quotes.get(entry["ticker"])
+        if quote is None:
+            continue
+        if entry["game_dt_utc"] < stale_game_cutoff:
+            continue
+        result.append({
+            "series": entry["series"],
+            "ticker": entry["ticker"],
+            "player_name": entry["player_name"],
+            "player_norm": entry["player_norm"],
+            "line": entry["line"],
+            "game_dt_utc": entry["game_dt_utc"],
+            "yes_ask": quote["yes_ask"],
+            "no_ask": quote["no_ask"],
+            "yes_ask_qty": quote["yes_ask_qty"],
+            "no_ask_qty": quote["no_ask_qty"],
+        })
+    return result
+
+
 def _reconstruct_poly_props_list() -> list[dict]:
     """Build poly_props list from WS cache for match_props() consumption."""
     now = datetime.now(timezone.utc)
@@ -2097,7 +2134,7 @@ def _run_props_arb_check_from_ws() -> None:
     global _last_status_log
     now_utc = datetime.now(timezone.utc)
     _price_cache.purge_old_date(now_utc.date())
-    kalshi_props = _price_cache.as_props_list(now_utc)
+    kalshi_props = _kalshi_props_from_book(now_utc)
     poly_props = _reconstruct_poly_props_list()
 
     if not kalshi_props:
