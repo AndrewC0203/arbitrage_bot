@@ -584,6 +584,12 @@ class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
         self.assertFalse(wm._handle_ws_message({"type": "subscribed", "sid": 1, "seq": 2}))
         self.assertFalse(wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=3)))
 
+    def test_ok_ack_frame_consumes_seq_no_phantom_gap(self):
+        # Rule 19: BOTH ack types (subscribed AND ok) consume seq on the sid.
+        self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
+        self.assertFalse(wm._handle_ws_message({"type": "ok", "sid": 1, "seq": 2}))
+        self.assertFalse(wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=3)))
+
     def test_ack_frame_gap_signals_resubscribe(self):
         self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
         needs_resub = wm._handle_ws_message({"type": "subscribed", "sid": 1, "seq": 5})  # gap: 1 -> 5
