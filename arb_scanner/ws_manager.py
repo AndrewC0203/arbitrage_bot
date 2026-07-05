@@ -584,6 +584,26 @@ class OpportunityTracker:
     def _make_key(self, m: dict) -> tuple:
         return (m["kalshi_ticker"], m["polymarket_slug"])
 
+    def has_match(self, m: dict) -> bool:
+        return self._make_key(m) in self._open
+
+    def mark_opened(self, m: dict, kalshi_fetched_at: str,
+                    polymarket_fetched_at: str) -> Optional[dict]:
+        """Insert a REST-confirmed arb as open. Returns the opened event, or
+        None when a concurrent tick already opened the key (caller skips)."""
+        key = self._make_key(m)
+        if key in self._open:
+            return None
+        now = utc_now()
+        opp_id = str(uuid.uuid4())
+        self._open[key] = {"opportunity_id": opp_id, "opened_at": now,
+                           "last_seen": now, "last_match": m}
+        return self._build_event(
+            "opened", opp_id, m, now,
+            kalshi_fetched_at, polymarket_fetched_at,
+            False, duration_seconds=None,
+        )
+
     def process(
         self,
         matches: list[dict],

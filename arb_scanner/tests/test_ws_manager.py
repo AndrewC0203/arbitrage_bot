@@ -949,5 +949,28 @@ class TestMoneylineGhostGate(unittest.TestCase):
         self.assertFalse(m["is_arb"])
 
 
+class TestMlTrackerMarkOpened(unittest.TestCase):
+    def setUp(self):
+        self.tr = wm.OpportunityTracker()
+        self.m = {"market_name": "X", "kalshi_ticker": "T1", "kalshi_team": "a",
+                  "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+                  "polymarket_slug": "s1", "polymarket_team": "b",
+                  "polymarket_ask": 0.645, "polymarket_taker_fee": 0.0134,
+                  "total_cost": 0.945, "gap_cents": 1.5, "is_arb": True}
+
+    def test_mark_opened_returns_opened_event_once(self):
+        ev = self.tr.mark_opened(self.m, wm.utc_now(), wm.utc_now())
+        self.assertEqual(ev["event"], "opened")
+        self.assertTrue(self.tr.has_match(self.m))
+        self.assertIsNone(self.tr.mark_opened(self.m, wm.utc_now(), wm.utc_now()))
+
+    def test_process_updates_then_closes_marked_arb(self):
+        self.tr.mark_opened(self.m, wm.utc_now(), wm.utc_now())
+        evs = self.tr.process([self.m], wm.utc_now(), wm.utc_now(), False)
+        self.assertEqual([e["event"] for e in evs], ["updated"])
+        evs = self.tr.process([], wm.utc_now(), wm.utc_now(), False)
+        self.assertEqual([e["event"] for e in evs], ["closed"])
+
+
 if __name__ == "__main__":
     unittest.main()
