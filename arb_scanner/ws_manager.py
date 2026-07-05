@@ -2179,7 +2179,7 @@ def _run_props_arb_check_from_ws() -> None:
             _last_status_log = time.time()
             ts = now_utc.strftime("%H:%M:%S")
             sys.stdout.write(
-                f"\r[{ts}][POLY-WS] No props arb — 0K/{len(poly_props)}P props (Kalshi cache stale). "
+                f"\r[{ts}][POLY-WS] No props arb — 0K/{len(poly_props)}P props (no Kalshi book quotes). "
                 f"{_ghost_stats.status_summary()}".ljust(140) + "\r"
             )
             sys.stdout.flush()
