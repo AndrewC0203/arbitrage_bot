@@ -465,34 +465,6 @@ class KalshiPriceCache:
         self._cache: dict[str, dict] = {}
         self._cache_date: Optional["datetime.date"] = None
 
-    def update_from_ws(self, ticker: str, msg: dict) -> bool:
-        """
-        Apply a ticker-channel payload (the "msg" object, already unwrapped).
-        Real feed carries yes_bid_dollars / yes_ask_dollars only — there is no
-        NO-side field, so no_ask is derived as 1 - yes_bid. A present-but-
-        unusable price (explicit null, 0, or ≥1) means "no live quote" and
-        clears the side rather than preserving a stale price; only a MISSING
-        key leaves the side untouched. Returns True if entry changed.
-        """
-        if ticker not in self._cache:
-            return False
-        entry = self._cache[ticker]
-        touched = False
-
-        if "yes_ask_dollars" in msg or "yes_ask" in msg:
-            raw_yes_ask = msg.get("yes_ask_dollars", msg.get("yes_ask"))
-            entry["yes_ask"] = self._parse_price(raw_yes_ask)
-            touched = True
-
-        if "yes_bid_dollars" in msg or "yes_bid" in msg:
-            yes_bid = self._parse_price(msg.get("yes_bid_dollars", msg.get("yes_bid")))
-            entry["no_ask"] = round(1.0 - yes_bid, 4) if yes_bid is not None else None
-            touched = True
-
-        if touched:
-            entry["updated_at"] = datetime.now(timezone.utc)
-        return touched
-
     def seed_from_rest(self, props: list[dict], authoritative_series: Optional[set] = None) -> None:
         """
         Merge a REST pull into the cache. REST is authoritative for the series
@@ -563,18 +535,6 @@ class KalshiPriceCache:
         player_name/player_norm/line/game_dt_utc). No freshness filtering;
         the arb path reads prices/qty from the order book, not this cache."""
         return list(self._cache.values())
-
-    @staticmethod
-    def _parse_price(raw) -> Optional[float]:
-        if raw is None:
-            return None
-        try:
-            val = float(raw)
-            if val > 1:
-                val /= 100.0
-            return val if 0 < val < 1 else None
-        except (TypeError, ValueError):
-            return None
 
 
 # ─── Arb Logic ────────────────────────────────────────────────────────────────
@@ -1537,27 +1497,34 @@ def _handle_ws_message(data: dict) -> bool:
         if ticker:
             if not _order_book.apply_snapshot(sid, seq, payload):
                 return True
-            check_arb_moneyline(utc_now())
+            if ticker.split("-")[0] in SERIES_TO_SMT:
+                _run_props_arb_check_from_ws()
+            else:
+                check_arb_moneyline(utc_now())
 
     elif msg_type == "orderbook_delta":
         if ticker:
             ok = _order_book.apply_delta(sid, seq, payload)
             if not ok:
                 return True
-            check_arb_moneyline(utc_now())
+            if ticker.split("-")[0] in SERIES_TO_SMT:
+                _run_props_arb_check_from_ws()
+            else:
+                check_arb_moneyline(utc_now())
 
     elif msg_type == "ticker":
-        # Props price update — fire the arb check immediately on any change
-        # instead of waiting up to 30s for the next Poly WS (CDN) update.
-        if ticker:
-            if _price_cache.update_from_ws(ticker, payload):
-                _run_props_arb_check_from_ws()
-
-    elif msg_type == "subscribed":
+        # Props moved to orderbook_delta; this frame can only arrive from a
+        # stale server-side subscription — ignore it.
         pass
 
-    elif msg_type == "error":
-        print(f"[WS] Error from Kalshi: {data}", file=sys.stderr)
+    elif msg_type in ("subscribed", "ok", "error"):
+        if msg_type == "error":
+            print(f"[WS] Error from Kalshi: {data}", file=sys.stderr)
+        # Ack frames consume seq numbers on the shared sid (rule 19) —
+        # must be tracked or the next book frame reads as a phantom gap.
+        if sid is not None and seq is not None:
+            if not _order_book.note_seq(sid, seq):
+                return True
 
     return False
 
@@ -1584,7 +1551,8 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
 
                 next_id = 1
                 next_id = await _ws_subscribe_chunks(ws, ml_tickers,   "orderbook_delta", next_id)
-                next_id = await _ws_subscribe_chunks(ws, prop_tickers,  "ticker",          next_id)
+                _order_book.sync_prop_tickers(prop_tickers)
+                next_id = await _ws_subscribe_chunks(ws, prop_tickers,  "orderbook_delta", next_id)
 
                 # Re-pull props via REST on every (re)connect — no props equivalent of
                 # orderbook_snapshot to backfill the gap, so REST is the only catch-up.
@@ -1592,7 +1560,7 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
 
                 print(
                     f"[WS] Connected — {len(ml_tickers)} moneyline tickers (orderbook_delta), "
-                    f"{len(prop_tickers)} prop tickers (ticker).",
+                    f"{len(prop_tickers)} prop tickers (orderbook_delta).",
                     file=sys.stderr,
                 )
 
@@ -1617,9 +1585,11 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                         new_ml   = _order_book.today_tickers(today)
                         new_prop = _price_cache.today_tickers(today)
                         next_id = await _ws_subscribe_chunks(ws, new_ml,   "orderbook_delta", next_id)
-                        next_id = await _ws_subscribe_chunks(ws, new_prop, "ticker",          next_id)
+                        _order_book.sync_prop_tickers(new_prop)
+                        next_id = await _ws_subscribe_chunks(ws, new_prop, "orderbook_delta", next_id)
                         print(
-                            f"[WS] Date rollover — resubscribed {len(new_ml)} ML + {len(new_prop)} prop tickers.",
+                            f"[WS] Date rollover — resubscribed {len(new_ml)} ML + "
+                            f"{len(new_prop)} prop tickers (orderbook_delta).",
                             file=sys.stderr,
                         )
 
