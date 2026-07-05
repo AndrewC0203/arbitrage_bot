@@ -7,3 +7,5 @@
 ## [2026-07-05] Ticker-channel prop handling — chose removing `KalshiPriceCache.update_from_ws()` and making the WS `ticker` branch a silent drop, over keeping a no-op method, because nothing subscribes props to the ticker channel after Layer 2 and dead write paths invite silent drift (rule 15's spirit). Obsolete ticker-update tests are replaced by ignore-assertions.
 
 ## [2026-07-05] Seq tracking on ack frames — per LEARNED_RULES rule 19, chunked subscribes share one sid and both `subscribed`/`ok` acks consume seq numbers; Layer 2 adds `note_seq()` so every sid+seq-bearing frame participates in gap detection, else ~19 prop subscribe chunks phantom-gap the connection.
+
+## [2026-07-05] Mid-session prop discovery — chose a 60s time-guarded resubscribe diff in the WS message loop over waiting for reconnect/rollover, because book-or-nothing pricing otherwise blinds the scanner to intra-day listings the old ticker-channel path served via 60s REST prices (design says REST reconcile stays for "discovery" — discovery without subscription is broken).

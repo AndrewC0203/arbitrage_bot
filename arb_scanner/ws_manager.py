@@ -112,6 +112,7 @@ GHOST_LOG_FILE             = "ghost_log.jsonl"
 _GHOST_LOG_COOLDOWN_SECONDS = 60    # per (ticker, direction, reason) dedupe window
 _GHOST_SUMMARY_INTERVAL_SECONDS = 3600
 _WS_SUBSCRIBE_CHUNK_SIZE = 50
+_PROP_RESUB_INTERVAL_SECONDS = 60
 _CACHE_STALE_SECONDS  = 300
 _MAX_TIMESTAMP_SKEW_SECONDS = 10
 REQUEST_TIMEOUT       = aiohttp.ClientTimeout(total=8)
@@ -1567,6 +1568,8 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                 next_id = await _ws_subscribe_chunks(ws, ml_tickers,   "orderbook_delta", next_id)
                 _order_book.sync_prop_tickers(prop_tickers)
                 next_id = await _ws_subscribe_chunks(ws, prop_tickers,  "orderbook_delta", next_id)
+                subscribed_props_set = set(prop_tickers)
+                last_prop_resub_at = time.time()
 
                 # Re-pull props via REST on every (re)connect — no props equivalent of
                 # orderbook_snapshot to backfill the gap, so REST is the only catch-up.
@@ -1601,11 +1604,32 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                         next_id = await _ws_subscribe_chunks(ws, new_ml,   "orderbook_delta", next_id)
                         _order_book.sync_prop_tickers(new_prop)
                         next_id = await _ws_subscribe_chunks(ws, new_prop, "orderbook_delta", next_id)
+                        subscribed_props_set = set(new_prop)
+                        last_prop_resub_at = time.time()
                         print(
                             f"[WS] Date rollover — resubscribed {len(new_ml)} ML + "
                             f"{len(new_prop)} prop tickers (orderbook_delta).",
                             file=sys.stderr,
                         )
+
+                    # Mid-session prop discovery: the 60s REST reconcile discovers
+                    # newly listed props into _price_cache, but nothing subscribes
+                    # them until reconnect/rollover — resync periodically so
+                    # intra-day listings (e.g. lineup-dependent props posted 1-2h
+                    # before first pitch) don't stay invisible all session.
+                    now_epoch = time.time()
+                    if now_epoch - last_prop_resub_at >= _PROP_RESUB_INTERVAL_SECONDS:
+                        last_prop_resub_at = now_epoch
+                        current = _price_cache.today_tickers(today)
+                        new = set(current) - subscribed_props_set
+                        if new:
+                            _order_book.sync_prop_tickers(current)
+                            next_id = await _ws_subscribe_chunks(ws, sorted(new), "orderbook_delta", next_id)
+                            subscribed_props_set = set(current)
+                            print(
+                                f"[WS] Mid-session prop resync — subscribed {len(new)} newly listed prop tickers.",
+                                file=sys.stderr,
+                            )
 
         except Exception as exc:
             print(
