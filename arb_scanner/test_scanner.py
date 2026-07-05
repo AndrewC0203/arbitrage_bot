@@ -566,6 +566,8 @@ class TestOpportunityTrackerLifecycle(unittest.TestCase):
         return {
             "market_name": "NYY vs BOS",
             "kalshi_ticker": ticker,
+            "kalshi_team": "NYY",
+            "polymarket_team": "bos",
             "kalshi_ask": k_ask,
             "kalshi_taker_fee": k_fee,
             "polymarket_slug": slug,
@@ -591,6 +593,17 @@ class TestOpportunityTrackerLifecycle(unittest.TestCase):
         assert len(e1) == 1 and e1[0]["event"] == "opened"
         assert len(e2) == 1 and e2[0]["event"] == "updated"
         assert len(e3) == 1 and e3[0]["event"] == "updated"
+
+    def test_OT01b_events_carry_sides_for_both_venues(self):
+        # An ML arb is Kalshi YES on kalshi_team + Poly YES on polymarket_team —
+        # opened AND closed events must say which side is bought on which site.
+        t = OpportunityTracker()
+        e1 = _tracker_process(t, [self._arb_match()])
+        e2 = _tracker_process(t, [])  # closed
+        assert e1[0]["kalshi_team"] == "NYY"
+        assert e1[0]["polymarket_team"] == "bos"
+        assert e2[0]["kalshi_team"] == "NYY"
+        assert e2[0]["polymarket_team"] == "bos"
 
     def test_OT02_opportunity_id_stable_across_lifecycle(self):
         # opportunity_id must be the same UUID across opened/updated/closed
@@ -906,7 +919,6 @@ def _prop_arb(ticker, direction, leg1_ask=0.45, leg2_ask=0.46):
         "event_title": "Game A",
         "game_start": "2026-06-30T23:00:00Z",
         "poly_smt": "baseball_player_hits",
-        "suspicious": False,
         "poly_ws_yes_ask": 0.45,
         "poly_ws_no_ask": 0.46,
     }
