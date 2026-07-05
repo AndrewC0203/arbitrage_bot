@@ -747,7 +747,9 @@ def _ml_ghost_filter_reason(m: dict, kalshi_by_ticker: dict,
     p_opp_ask = poly_ask_by_side.get((m["polymarket_slug"], m["kalshi_team"]))
     three_way = m["kalshi_ticker"].split("-")[0] in _THREE_WAY_SERIES
     p_yes_bid = None
-    if not three_way and p_opp_ask is not None:
+    if not three_way:
+        if p_opp_ask is None:
+            return "one_sided"
         p_yes_bid = round(1.0 - p_opp_ask, 4)
         if p_yes_bid >= GHOST_PIN_PROB:
             return "pinned"

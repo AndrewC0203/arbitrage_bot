@@ -865,6 +865,12 @@ class TestMlGhostFilterReason(unittest.TestCase):
         pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.31}
         self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.68), kbt, pas), "one_sided")
 
+    def test_two_way_missing_poly_opp_ask_is_one_sided(self):
+        # Two-way market with no (slug, kalshi_team) entry in poly_ask_by_side:
+        # Poly leg has no derivable yes_bid — must read "one_sided", not pass.
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": 0.28}}
+        self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.70), kbt, {}), "one_sided")
+
     def test_soccer_three_way_skips_poly_complement(self):
         # Poly asks sum to 0.80 (draw mass) — two-way math would call this
         # crossed/spread; soccer must pass when the Kalshi leg is healthy.
