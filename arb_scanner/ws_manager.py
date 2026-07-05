@@ -1661,6 +1661,10 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                             )
 
         except Exception as exc:
+            # Go dark on props immediately — waiting for the next successful
+            # connect's reset_connection() would serve pre-gap book quotes to
+            # Poly-triggered sweeps for the whole backoff window.
+            _order_book.reset_connection()
             print(
                 f"[WS] Kalshi disconnected: {exc!r}. Reconnecting in {backoff}s...",
                 file=sys.stderr,
