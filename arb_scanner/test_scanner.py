@@ -18,8 +18,6 @@ from unittest.mock import patch
 
 from ws_manager import (
     ARB_THRESHOLD,
-    KALSHI_TAKER_FEE_RATE,
-    POLYMARKET_TAKER_FEE_RATE,
     OpportunityTracker,
     PropArbTracker,
     _print_and_log_prop_open,
@@ -28,6 +26,12 @@ from ws_manager import (
     team_code,
     teams_from_kalshi_title,
     teams_from_kalshi_market,
+)
+from fees import (
+    KALSHI_TAKER_FEE_THETA,
+    POLYMARKET_TAKER_FEE_THETA,
+    kalshi_taker_fee,
+    polymarket_taker_fee,
 )
 from matchers.baseball import (
     BaseballMatcher,
@@ -50,14 +54,14 @@ _GAME_SEGMENT = "26JUN291900"
 
 def _kalshi_market(ticker, title, ask):
     """Build a Kalshi market dict. ticker should use realistic format: KXMLBGAME-{DATE}-{TEAM}."""
-    fee = round(ask * KALSHI_TAKER_FEE_RATE, 6)
+    fee = round(kalshi_taker_fee(ask), 6)
     return {"ticker": ticker, "title": title, "ask": ask, "taker_fee": fee,
             "raw": {"title": title}}
 
 
 def _poly_market(slug, question, ask, team_abbr, game_start=_GAME_START_UTC):
     """Build a Polymarket market dict in live format (with team_abbr and gameStartTime)."""
-    fee = round(ask * POLYMARKET_TAKER_FEE_RATE, 6)
+    fee = round(polymarket_taker_fee(ask), 6)
     return {"slug": slug, "title": question, "ask": ask, "taker_fee": fee,
             "team_abbr": team_abbr, "raw": {"gameStartTime": game_start}}
 
@@ -560,8 +564,8 @@ class TestOpportunityTrackerLifecycle(unittest.TestCase):
     """TC-OT-*: OpportunityTracker emits correct opened/updated/closed events."""
 
     def _arb_match(self, ticker="KXMLBGAME-NYYBOS", slug="nyy-vs-bos", k_ask=0.45, p_ask=0.45):
-        k_fee = round(k_ask * KALSHI_TAKER_FEE_RATE, 6)
-        p_fee = round(p_ask * POLYMARKET_TAKER_FEE_RATE, 6)
+        k_fee = round(kalshi_taker_fee(k_ask), 6)
+        p_fee = round(polymarket_taker_fee(p_ask), 6)
         total = round(k_ask + p_ask + k_fee + p_fee, 6)
         return {
             "market_name": "NYY vs BOS",
@@ -743,40 +747,46 @@ class TestOpportunityTrackerLifecycle(unittest.TestCase):
 # ══════════════════════════════════════════════════════════════════════════════
 
 class TestArbThresholdFormula(unittest.TestCase):
-    """TC-AT-*: total_cost = k_ask + p_ask + k_fee + p_fee compared to ARB_THRESHOLD."""
+    """TC-AT-*: total_cost = k_ask + p_ask + k_fee + p_fee compared to ARB_THRESHOLD,
+    where k_fee/p_fee follow each venue's parabolic taker-fee formula (fees.py)."""
 
     def _cost(self, k, p):
-        k_fee = k * KALSHI_TAKER_FEE_RATE
-        p_fee = p * POLYMARKET_TAKER_FEE_RATE
-        return k + p + k_fee + p_fee
+        return k + p + kalshi_taker_fee(k) + polymarket_taker_fee(p)
 
     def test_AT01_well_below_threshold_is_arb(self):
         # KalshiAsk=0.45, PolyAsk=0.45, FeeSymmetry=equal, ArbOutcome=True
         assert self._cost(0.45, 0.45) < ARB_THRESHOLD
 
     def test_AT02_just_below_threshold_is_arb(self):
-        # k+p just under 0.9505 boundary
-        assert self._cost(0.474, 0.474) < ARB_THRESHOLD
+        # Symmetric boundary (see AT03) sits at k=p≈0.4638; just under it is still arb
+        assert self._cost(0.463, 0.463) < ARB_THRESHOLD
 
     def test_AT03_at_exact_boundary_is_not_arb(self):
-        # k=p=0.475248 → total ≈ 0.96 exactly — not arb (strict <)
-        k = p = ARB_THRESHOLD / (2 * 1.01)
-        total = self._cost(k, p)
-        assert abs(total - ARB_THRESHOLD) < 1e-9
+        # Binary-search the symmetric price where cost(x, x) == ARB_THRESHOLD to
+        # machine precision, then verify the strict "<" comparison excludes it —
+        # avoids hand-deriving the (now quadratic) boundary algebraically.
+        lo, hi = 0.01, 0.49
+        for _ in range(100):
+            mid = (lo + hi) / 2
+            if self._cost(mid, mid) < ARB_THRESHOLD:
+                lo = mid
+            else:
+                hi = mid
+        total = self._cost(hi, hi)
+        assert total >= ARB_THRESHOLD
         assert not (total < ARB_THRESHOLD)
 
     def test_AT04_just_above_threshold_not_arb(self):
-        # KalshiAsk=0.476, PolyAsk=0.476 → total > 0.96
-        assert self._cost(0.476, 0.476) >= ARB_THRESHOLD
+        # Just above the ~0.4638 symmetric boundary → total > 0.96
+        assert self._cost(0.465, 0.465) >= ARB_THRESHOLD
 
     def test_AT05_asymmetric_below_threshold_is_arb(self):
-        # KalshiAsk=0.55, PolyAsk=0.40 → total=0.9595 < 0.96, IS arb
-        # Fee formula: 0.55*1.01 + 0.40*1.01 = 0.9595
-        assert self._cost(0.55, 0.40) < ARB_THRESHOLD
+        # KalshiAsk=0.60, PolyAsk=0.20 → comfortably under threshold, IS arb
+        assert self._cost(0.60, 0.20) < ARB_THRESHOLD
 
     def test_AT06_asymmetric_moderate_below_threshold(self):
-        # KalshiAsk=0.53, PolyAsk=0.40
-        assert self._cost(0.53, 0.40) < ARB_THRESHOLD
+        # KalshiAsk=0.50, PolyAsk=0.30
+        assert self._cost(0.50, 0.30) < ARB_THRESHOLD
 
     def test_AT07_tiny_asks_always_arb(self):
         # KalshiAsk=0.01, PolyAsk=0.01
@@ -785,18 +795,19 @@ class TestArbThresholdFormula(unittest.TestCase):
     def test_AT08_formula_is_additive_not_subtraction(self):
         # Verify formula is sum, not subtraction
         k, p = 0.45, 0.45
-        k_fee = k * KALSHI_TAKER_FEE_RATE
-        p_fee = p * POLYMARKET_TAKER_FEE_RATE
-        expected = k + p + k_fee + p_fee
+        expected = k + p + kalshi_taker_fee(k) + polymarket_taker_fee(p)
         assert abs(self._cost(k, p) - expected) < 1e-10
 
-    def test_AT09_fees_are_percentage_of_ask_not_fixed(self):
-        # Fee scales with ask — 1% of kalshi_ask, 1% of poly_ask
-        k, p = 0.60, 0.30
-        k_fee = round(k * KALSHI_TAKER_FEE_RATE, 6)
-        p_fee = round(p * POLYMARKET_TAKER_FEE_RATE, 6)
-        assert k_fee == 0.006
-        assert p_fee == 0.003
+    def test_AT09_fees_follow_parabolic_formula_not_flat_rate(self):
+        # Fee = theta * price * (1 - price) — NOT a flat percentage of ask.
+        assert kalshi_taker_fee(0.60) == KALSHI_TAKER_FEE_THETA * 0.60 * 0.40
+        assert polymarket_taker_fee(0.30) == POLYMARKET_TAKER_FEE_THETA * 0.30 * 0.70
+        # A flat rate would charge 0.10 and 0.90 in the same proportion to price.
+        # The parabolic formula gives them the same *absolute* fee (symmetric
+        # around $0.50) but wildly different fee-to-price ratios — proof it
+        # isn't a fixed percentage.
+        assert abs(kalshi_taker_fee(0.10) - kalshi_taker_fee(0.90)) < 1e-12
+        assert (kalshi_taker_fee(0.10) / 0.10) > (kalshi_taker_fee(0.90) / 0.90)
 
     def test_AT10_gap_cents_positive_when_arb(self):
         # gap_cents = (ARB_THRESHOLD - total_cost) * 100 > 0 when arb
@@ -818,7 +829,7 @@ class TestArbThresholdFormula(unittest.TestCase):
         results = match_markets(km, pm)
         assert len(results) == 1
         r = results[0]
-        expected_total = 0.45 + 0.45 + 0.45 * 0.01 + 0.45 * 0.01
+        expected_total = 0.45 + 0.45 + kalshi_taker_fee(0.45) + polymarket_taker_fee(0.45)
         assert abs(r["total_cost"] - expected_total) < 1e-6
         assert r["is_arb"] == (expected_total < ARB_THRESHOLD)
 

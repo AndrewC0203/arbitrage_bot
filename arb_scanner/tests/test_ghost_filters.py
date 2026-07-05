@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 import ws_manager as wm
+from fees import kalshi_taker_fee, polymarket_taker_fee
 
 _GAME = datetime(2026, 7, 2, 2, 10, tzinfo=timezone.utc)
 
@@ -99,9 +100,15 @@ class TestPastedGhostsSuppressed(GhostFilterBase):
         self.assert_suppressed(_kp(0.30, 0.95), _pp(0.58, 0.44), "spread")
 
     def test_too_good_edge_is_edge_cap(self):
-        # Sane books, mids 0.149 apart (passes F2), but total 0.8595 => gap
-        # 10.05c > GHOST_MAX_GAP_CENTS: presumed data error (F3).
-        self.assert_suppressed(_kp(0.40, 0.60), _pp(0.549, 0.451), "edge_cap")
+        # Under the parabolic fee model, a pair that cleanly passes F1/F2/F4
+        # tops out around a ~9.9c edge — real fees already eat most of what
+        # used to look like a too-good-to-be-true double-digit-cent gap (see
+        # DECISIONS.md). So F3 is exercised in isolation here: F1/F2/F4 are
+        # forced to pass (mocked None) and only the direction whose >10c gap
+        # should trip the cap is left below ARB_THRESHOLD; the other
+        # direction (0.95 + 0.95 + fees) is skipped before F3 is ever reached.
+        with patch.object(wm, "_ghost_filter_reason", return_value=None):
+            self.assert_suppressed(_kp(0.95, 0.30), _pp(0.40, 0.95), "edge_cap")
 
     def test_missing_side_is_one_sided(self):
         # Kalshi has no NO-side quote -> Kalshi mid not computable (F2's
@@ -118,13 +125,17 @@ class TestRealArbPassesThrough(GhostFilterBase):
     the shape but uses spec-consistent prices (see DECISIONS.md 2026-07-02)."""
 
     def test_eldridge_class_arb_emitted(self):
-        # Kalshi 0.45/0.58 (bid 0.42, mid 0.435); Poly 0.56/0.48 (bid 0.52,
-        # mid 0.54). Mids 0.105 apart, spreads 0.03/0.04, total 0.9393, gap 2.07c.
-        arbs = wm.match_props([_kp(0.45, 0.58)], [_pp(0.56, 0.48)])
+        # Kalshi 0.10/0.90 (bid 0.10, mid 0.10, spread 0); Poly 0.18/0.82 (bid
+        # 0.18, mid 0.18, spread 0). Mids 0.08 apart (within F2's 0.15), no
+        # crossed/canyon spreads (F4 clean). Under the parabolic fee model this
+        # thin, low-price pair survives with a real ~2.48c edge — prices near
+        # $0.50 no longer can (see test_too_good_edge_is_edge_cap).
+        arbs = wm.match_props([_kp(0.10, 0.90)], [_pp(0.18, 0.82)])
         self.assertEqual(len(arbs), 1)
         arb = arbs[0]
         self.assertEqual(arb["direction"], "Kalshi YES + Poly NO")
-        self.assertAlmostEqual(arb["total_cost"], round((0.45 + 0.48) * 1.01, 4))
+        expected_total = round(0.10 + 0.82 + kalshi_taker_fee(0.10) + polymarket_taker_fee(0.82), 4)
+        self.assertAlmostEqual(arb["total_cost"], expected_total)
         self.assertEqual(wm._ghost_stats.total_suppressed(), 0)
         self.assertEqual(self.ghost_log, [])
         # The cosmetic suspicious flag is replaced by the filters — gone.

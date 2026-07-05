@@ -31,10 +31,9 @@ from matchers.baseball import (
     teams_from_kalshi_market,
     _kalshi_game_dt_utc,
 )
+from fees import kalshi_taker_fee, polymarket_taker_fee
 
 ARB_THRESHOLD = 0.96
-KALSHI_TAKER_FEE_RATE = 0.01
-POLYMARKET_TAKER_FEE_RATE = 0.01
 
 REQUIRED_KEYS = {
     "market_name",
@@ -56,7 +55,7 @@ REQUIRED_KEYS = {
 
 def _kalshi_live(ticker: str, title: str, ask: float, raw: dict = None) -> dict:
     """Construct a Kalshi market dict in the live-mode shape (from as_kalshi_markets)."""
-    fee = round(ask * KALSHI_TAKER_FEE_RATE, 6)
+    fee = round(kalshi_taker_fee(ask), 6)
     return {
         "ticker": ticker,
         "title": title,
@@ -68,7 +67,7 @@ def _kalshi_live(ticker: str, title: str, ask: float, raw: dict = None) -> dict:
 
 def _poly_live(slug: str, team_abbr: str, ask: float, game_start_utc: str, raw_extra: dict = None) -> dict:
     """Construct a Polymarket market dict in the live-mode shape (from fetch_polymarket)."""
-    fee = round(ask * POLYMARKET_TAKER_FEE_RATE, 6)
+    fee = round(polymarket_taker_fee(ask), 6)
     raw = {"gameStartTime": game_start_utc, "slug": slug}
     if raw_extra:
         raw.update(raw_extra)
@@ -84,7 +83,7 @@ def _poly_live(slug: str, team_abbr: str, ask: float, game_start_utc: str, raw_e
 
 def _kalshi_test(ticker: str, title: str, ask: float) -> dict:
     """Construct a Kalshi market dict for test-mode (no raw, uses title for team extraction)."""
-    fee = round(ask * KALSHI_TAKER_FEE_RATE, 6)
+    fee = round(kalshi_taker_fee(ask), 6)
     return {"ticker": ticker, "title": title, "ask": ask, "taker_fee": fee, "raw": {}}
 
 
@@ -93,7 +92,7 @@ def _poly_test(slug: str, question: str, ask: float) -> dict:
     Construct a Polymarket dict WITHOUT team_abbr.
     Absence of team_abbr on ANY market triggers test-mode in BaseballMatcher.
     """
-    fee = round(ask * POLYMARKET_TAKER_FEE_RATE, 6)
+    fee = round(polymarket_taker_fee(ask), 6)
     return {"slug": slug, "title": question, "ask": ask, "taker_fee": fee, "raw": {}}
 
 
@@ -158,8 +157,8 @@ class TestLiveModeArbDetected(unittest.TestCase):
 
     def setUp(self):
         self.matcher = BaseballMatcher()
-        # Kalshi CIN ask=0.43; fee=0.0043; Poly MIL ask=0.40; fee=0.0040
-        # total = 0.43 + 0.40 + 0.0043 + 0.0040 = 0.8383 < 0.96 → arb
+        # Kalshi CIN ask=0.43 (parabolic fee ~0.0172); Poly MIL ask=0.40 (fee ~0.0144)
+        # total ≈ 0.8616 < 0.96 → arb
         self.km = _kalshi_live(CIN_TICKER, CIN_TITLE, 0.43,
                                raw={"title": CIN_TITLE})
         self.pm_mil = _poly_live("aec-mlb-cin-mil", "mil", 0.40, CIN_UTC_START)
@@ -173,7 +172,7 @@ class TestLiveModeArbDetected(unittest.TestCase):
     def test_L02_total_cost_calculated_correctly(self):
         results = self.matcher.match([self.km], [self.pm_mil, self.pm_cin])
         r = results[0]
-        expected = round(0.43 + 0.40 + 0.43 * 0.01 + 0.40 * 0.01, 6)
+        expected = round(0.43 + 0.40 + kalshi_taker_fee(0.43) + polymarket_taker_fee(0.40), 6)
         self.assertAlmostEqual(r["total_cost"], expected, places=5)
 
     def test_L03_gap_cents_positive_when_arb(self):
@@ -201,10 +200,7 @@ class TestLiveModeNoArb(unittest.TestCase):
 
     def test_L07_no_arb_when_total_at_threshold(self):
         matcher = BaseballMatcher()
-        # 0.47 + 0.47 + fees ≈ 0.9494 < 0.96 — adjust to be >= 0.96
-        # 0.47 + 0.47 + 0.0047 + 0.0047 = 0.9494 — still arb
-        # Use 0.475 + 0.475 + fees = 0.9595 — still arb
-        # Use 0.48 + 0.48 + 0.0048 + 0.0048 = 0.9696 >= 0.96 → not arb
+        # 0.48 + 0.48 + parabolic fees (~0.0175 + ~0.0150) ≈ 0.9924 >= 0.96 → not arb
         km = _kalshi_live(CIN_TICKER, CIN_TITLE, 0.48,
                           raw={"title": CIN_TITLE})
         pm_mil = _poly_live("aec-mlb-cin-mil", "mil", 0.48, CIN_UTC_START)
@@ -372,7 +368,7 @@ class TestTestMode(unittest.TestCase):
                           "Seattle @ Cleveland Winner?", 0.45)
         pm = _poly_test("poly-sea-cle", "Seattle vs Cleveland", 0.42)
         results = matcher.match([km], [pm])
-        # 0.45 + 0.42 + 0.0045 + 0.0042 = 0.8787 < 0.96
+        # 0.45 + 0.42 + parabolic fees (~0.0173 + ~0.0146) ≈ 0.9019 < 0.96
         self.assertTrue(results[0]["is_arb"])
 
     def test_T03_test_mode_no_match_different_teams(self):

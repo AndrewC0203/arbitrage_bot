@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 import ws_manager as wm
 from ws_manager import KalshiOrderBook, KalshiPriceCache
+from fees import kalshi_taker_fee, polymarket_taker_fee
 
 ML_TICKER = "KXMLBGAME-26JUL041335MINNYY-MIN"
 PROP_TICKER = "KXMLBHR-26JUL012010CINMIL-MILJCHOURIO11-1"
@@ -259,11 +260,11 @@ def _match_inputs(k_yes=0.50, p_no=0.455):
 
 
 class TestPropsFees(unittest.TestCase):
-    """Fix E: props arb math must include the documented 1%-per-leg taker fees
-    (CLAUDE.md: total_cost = 1.01 x (kalshi_ask + poly_ask))."""
+    """Fix E: props arb math must include per-leg taker fees, using each
+    venue's parabolic formula (fees.py), not a flat rate."""
 
     def test_fee_blind_zone_is_not_flagged_as_arb(self):
-        # raw 0.955 < 0.96 but fee-inclusive 0.9646 >= 0.96 -> not an arb
+        # raw 0.955 < 0.96 but fee-inclusive total is well over 0.96 -> not an arb
         kp, pp = _match_inputs(k_yes=0.50, p_no=0.455)
         self.assertEqual(wm.match_props(kp, pp), [])
 
@@ -271,7 +272,8 @@ class TestPropsFees(unittest.TestCase):
         kp, pp = _match_inputs(k_yes=0.50, p_no=0.40)
         arbs = wm.match_props(kp, pp)
         self.assertEqual(len(arbs), 1)
-        self.assertAlmostEqual(arbs[0]["total_cost"], round(0.90 * 1.01, 4))
+        expected = round(0.50 + 0.40 + kalshi_taker_fee(0.50) + polymarket_taker_fee(0.40), 4)
+        self.assertAlmostEqual(arbs[0]["total_cost"], expected)
 
     def test_rest_confirm_applies_fees_too(self):
         # WS and REST agree on 0.50; raw total 0.955 passes the old check but
