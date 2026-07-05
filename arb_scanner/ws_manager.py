@@ -1,9 +1,10 @@
 """
 ws_manager.py — Unified WebSocket Manager for MLB Arb
 
-Single Kalshi WS connection subscribing to two channels:
-  - orderbook_delta: moneyline markets (triggers arb check on every delta)
-  - ticker:          player prop markets (prices cached; arb checked on each Poly WS update)
+Single Kalshi WS connection, both moneyline and player props on one channel:
+  - orderbook_delta: moneyline markets (arb check on every applied delta) and
+    player props (book-sourced two-sided quotes, seq-gapped; arb check fires
+    only when a frame moves the top of book)
 
 Polymarket: authenticated WebSocket at wss://api.polymarket.us/v1/ws/markets
   - Ed25519 auth via X-PM-Access-Key / X-PM-Timestamp / X-PM-Signature headers
