@@ -320,7 +320,7 @@ class KalshiOrderBook:
         for entry in levels or []:
             try:
                 price = round(float(entry[0]) * 100)
-                qty = float(entry[1])
+                qty = round(float(entry[1]), 2)  # keep on the cent grid (see apply_delta)
             except (IndexError, TypeError, ValueError):
                 continue
             if qty > 0 and 0 < price < 100:
@@ -400,7 +400,11 @@ class KalshiOrderBook:
             return True
 
         book = self._books.setdefault(ticker, {"yes": {}, "no": {}})[side]
-        new_qty = book.get(price, 0.0) + delta
+        # Quantities are 2-decimal dollar strings; raw float accumulation can
+        # leave a +1e-13 residue when a level is fully consumed, and that dust
+        # survives the <= 0 pop below — pinning best-ask at a phantom price
+        # indefinitely. Snap every accumulation back to the cent grid.
+        new_qty = round(book.get(price, 0.0) + delta, 2)
         if new_qty <= 0:
             book.pop(price, None)
         else:

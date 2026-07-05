@@ -560,6 +560,38 @@ class TestKalshiOrderBookProps(unittest.TestCase):
         self.assertNotIn(PROP_TICKER, self.book._updated_at)
 
 
+class TestOrderBookFloatDust(unittest.TestCase):
+    """Deltas arrive as 2-decimal dollar strings but were accumulated as raw
+    floats: fully consuming a level can leave a +1e-13 residue, which
+    `new_qty <= 0` never pops. The dust level then pins best-ask at a phantom
+    price indefinitely (live incident 2026-07-05: scanner quoted CLE YES at
+    0.29 for 76+s while Kalshi's real ask was 0.36; SFCOL-COL pinned at 0.77
+    vs real 0.89). Quantities must snap to the cent grid so consumed levels
+    reach exactly zero."""
+
+    def setUp(self):
+        self.book = KalshiOrderBook()
+        self.book.seed_from_rest([{"ticker": ML_TICKER, "title": "t", "raw": {}}])
+        # Best NO bid 0.71 -> YES ask 0.29; next level 0.50 -> ask 0.50
+        snap = _snapshot_msg(no=[["0.5000", "10.00"], ["0.7100", "346.70"]])
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        self.assertEqual(self.book._best_ask[ML_TICKER], 0.29)
+
+    def test_fully_consumed_level_with_float_residue_is_popped(self):
+        # float(346.70) - float(295.58) - float(51.12) = +7.1e-15, not 0
+        for seq, fill in ((2, "-295.58"), (3, "-51.12")):
+            d = _delta_msg(seq=seq, price="0.7100", delta=fill, side="no")
+            self.book.apply_delta(d["sid"], d["seq"], d["msg"])
+        self.assertNotIn(71, self.book._books[ML_TICKER]["no"])
+        self.assertEqual(self.book._best_ask[ML_TICKER], 0.50)
+
+    def test_reduced_level_keeps_exact_remaining_qty(self):
+        d = _delta_msg(seq=2, price="0.7100", delta="-295.58", side="no")
+        self.book.apply_delta(d["sid"], d["seq"], d["msg"])
+        self.assertEqual(self.book._books[ML_TICKER]["no"][71], 51.12)
+        self.assertEqual(self.book._best_ask[ML_TICKER], 0.29)
+
+
 class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
     """Task 3 (ghost-free arbs Layer 2): props now ride orderbook_snapshot/
     orderbook_delta — route by series prefix (SERIES_TO_SMT) to the props
