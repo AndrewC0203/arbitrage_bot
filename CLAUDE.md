@@ -9,6 +9,7 @@ Read-only WebSocket arbitrage scanner for Kalshi + Polymarket US. Logs opportuni
 ```
 arb_scanner/
   ws_manager.py          # MAIN ENTRY: dual WebSocket engine
+  fees.py                # Kalshi + Polymarket US parabolic taker fee formulas
   matchers/
     base.py              # BaseMatcher ABC
     baseball.py          # MLB moneyline + alias resolution
@@ -45,15 +46,17 @@ archive/migration_scripts/ # one-time migration scripts
 
 ### Arb Detection
 
-Fees are computed per-leg as a fraction of the ask price, then summed:
+Both venues charge a price-dependent ("parabolic") taker fee, not a flat percentage —
+see `fees.py`. Fee peaks at ask=$0.50 and shrinks toward the $0.01/$0.99 extremes:
 
 ```
-k_fee   = kalshi_ask  × KALSHI_TAKER_FEE_RATE   (0.01)
-p_fee   = poly_ask    × POLYMARKET_TAKER_FEE_RATE (0.01)
+k_fee   = KALSHI_TAKER_FEE_THETA     × kalshi_ask × (1 − kalshi_ask)   (θ = 0.07)
+p_fee   = POLYMARKET_TAKER_FEE_THETA × poly_ask   × (1 − poly_ask)     (θ = 0.06)
 total_cost = kalshi_ask + poly_ask + k_fee + p_fee
-           = 1.01 × (kalshi_ask + poly_ask)
 is_arb  = total_cost < ARB_THRESHOLD (0.96)
 ```
+
+Sources: [kalshi.com/fee-schedule](https://kalshi.com/fee-schedule) (taker θ=0.07), [docs.polymarket.us/fees.md](https://docs.polymarket.us/fees.md) (taker θ=0.06).
 
 1. **Moneyline**: Kalshi YES (team A) + Polymarket YES (team B). Arb when `total_cost < 0.96`.
 2. **Props**: Match by `(smt, player_norm, line, game_date)`. YES one side + NO other; same formula. Would-be prop arbs must then pass the Layer-1 ghost filters (F1 pinned, F2 mid agreement, F3 edge cap, F4 spread/two-sided) — suppressions go to `ghost_log.jsonl`, per-reason counts to hourly `ghost_filter_summary` events.
@@ -73,8 +76,8 @@ is_arb  = total_cost < ARB_THRESHOLD (0.96)
 | ------------------------- | ----- | ------------------------------ |
 | ARB_THRESHOLD             | 0.96  | Max combined cost for arb      |
 | POLY_POLL_SECONDS         | 2     | REST seed cadence              |
-| KALSHI_TAKER_FEE_RATE     | 0.01  | 1% per Kalshi leg              |
-| POLYMARKET_TAKER_FEE_RATE | 0.01  | 1% per Polymarket leg          |
+| KALSHI_TAKER_FEE_THETA     | 0.07  | Kalshi parabolic fee coefficient |
+| POLYMARKET_TAKER_FEE_THETA | 0.06  | Polymarket US parabolic fee coefficient |
 | \_CACHE_STALE_SECONDS     | 300   | Evict entries older than 5 min |
 | GHOST_PIN_PROB            | 0.97  | F1: leg implied ≥97% resolved → suppress |
 | GHOST_MID_DISAGREEMENT_MAX | 0.15 | F2: max venue-mid divergence   |
