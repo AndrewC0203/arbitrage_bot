@@ -457,8 +457,9 @@ class KalshiOrderBook:
 
 class KalshiPriceCache:
     """
-    In-memory cache for Kalshi prop prices, updated by WS ticker messages.
-    Seeded from REST on startup; stale entries excluded from arb checks.
+    Metadata authority for Kalshi props (player/line/game_dt_utc/eviction),
+    seeded and refreshed via REST only. The props arb path reads prices/qty
+    from the order book (orderbook_delta channel), not from here.
     """
 
     def __init__(self):
