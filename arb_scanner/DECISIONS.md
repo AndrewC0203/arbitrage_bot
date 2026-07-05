@@ -9,3 +9,5 @@
 ## [2026-07-05] Seq tracking on ack frames — per LEARNED_RULES rule 19, chunked subscribes share one sid and both `subscribed`/`ok` acks consume seq numbers; Layer 2 adds `note_seq()` so every sid+seq-bearing frame participates in gap detection, else ~19 prop subscribe chunks phantom-gap the connection.
 
 ## [2026-07-05] Mid-session prop discovery — chose a 60s time-guarded resubscribe diff in the WS message loop over waiting for reconnect/rollover, because book-or-nothing pricing otherwise blinds the scanner to intra-day listings the old ticker-channel path served via 60s REST prices (design says REST reconcile stays for "discovery" — discovery without subscription is broken).
+
+## [2026-07-05] Props sweep trigger — chose gating `_run_props_arb_check_from_ws` on top-of-book signature changes over a time coalescer, because it restores the old ticker-channel trigger semantics (fire on price change, not deep-book churn) and keeps ~241 msg/s of book traffic from burning the shared event loop during the 24h validation.

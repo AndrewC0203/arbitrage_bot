@@ -609,6 +609,32 @@ class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
         needs_resub = wm._handle_ws_message({"type": "subscribed", "sid": 1, "seq": 5})  # gap: 1 -> 5
         self.assertTrue(needs_resub)
 
+    def test_prop_delta_changing_best_no_bid_fires_props_check(self):
+        # Snapshot's best NO bid is 0.58 (qty 608.52); removing it moves the
+        # best NO bid to 0.50 — top-of-book changes, so the sweep must fire.
+        wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
+        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check:
+            wm._handle_ws_message(
+                _delta_msg(ticker=PROP_TICKER, seq=2, price="0.5800", delta="-608.52", side="no")
+            )
+        props_check.assert_called_once()
+
+    def test_prop_delta_on_non_best_deep_level_does_not_fire_props_check(self):
+        # Snapshot's NO side has a deep level at 0.50 (qty 10.00) below the
+        # best at 0.58 — removing the deep level doesn't move the top of
+        # book, so the sweep must NOT fire.
+        wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
+        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check:
+            wm._handle_ws_message(
+                _delta_msg(ticker=PROP_TICKER, seq=2, price="0.5000", delta="-10.00", side="no")
+            )
+        props_check.assert_not_called()
+
+    def test_prop_first_snapshot_fires_props_check(self):
+        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check:
+            wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
+        props_check.assert_called_once()
+
 
 class TestKalshiPropsFromBook(unittest.TestCase):
     """Task 2 (ghost-free arbs Layer 2): the props arb path reads price/qty

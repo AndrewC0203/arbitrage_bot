@@ -436,6 +436,25 @@ class KalshiOrderBook:
             })
         return result
 
+    def top_signature(self, ticker: str) -> Optional[tuple]:
+        """(best_yes_bid_cents, qty_at_it, best_no_bid_cents, qty_at_it) for a
+        ticker, or None when it has no non-empty book. Used to gate the props
+        sweep on top-of-book changes only — deep-book churn (~241 msg/s at
+        ~951 props) shouldn't trigger a full match_props sweep."""
+        book = self._books.get(ticker)
+        if not book:
+            return None
+        yes_levels = book.get("yes", {})
+        no_levels = book.get("no", {})
+        if not yes_levels and not no_levels:
+            return None
+        yes_bid_c = max(yes_levels) if yes_levels else None
+        no_bid_c = max(no_levels) if no_levels else None
+        return (
+            yes_bid_c, yes_levels.get(yes_bid_c) if yes_bid_c is not None else None,
+            no_bid_c, no_levels.get(no_bid_c) if no_bid_c is not None else None,
+        )
+
     def prop_quotes(self) -> dict[str, dict]:
         """Best yes/no ask + resting qty for registered prop tickers, derived
         the same way as ML (ask = 1 - opposing side's best bid) but kept out
@@ -1492,13 +1511,27 @@ async def _ws_subscribe_chunks(ws, tickers: list[str], channel: str, start_id: i
 
 # ─── WS Message Handler ────────────────────────────────────────────────────────
 
-def _route_book_arb_check(ticker: str) -> None:
-    """Fire the arb check matching the book frame's market type: prop series
-    (SERIES_TO_SMT prefix) → props check, anything else → moneyline."""
-    if ticker.split("-")[0] in SERIES_TO_SMT:
-        _run_props_arb_check_from_ws()
+def _apply_book_frame(apply_fn, sid, seq, payload: dict, ticker: str) -> bool:
+    """
+    Apply one orderbook_snapshot/orderbook_delta frame via `apply_fn`, then
+    fire the arb check matching the frame's market type. Prop series
+    (SERIES_TO_SMT prefix) only sweep when the frame moved the top of book —
+    at ~241 msg/s of deep-book churn across ~951 props, sweeping on every
+    frame (full prop_quotes() + poly list rebuild + match_props) is enough to
+    lag the shared event loop. Moneyline sweeps on every applied frame, same
+    as before. Returns True if the caller should reconnect (seq gap) — a
+    skipped/unregistered ticker's None→None signature never fires either way.
+    """
+    is_prop = ticker.split("-")[0] in SERIES_TO_SMT
+    before = _order_book.top_signature(ticker) if is_prop else None
+    if not apply_fn(sid, seq, payload):
+        return True
+    if is_prop:
+        if _order_book.top_signature(ticker) != before:
+            _run_props_arb_check_from_ws()
     else:
         check_arb_moneyline(utc_now())
+    return False
 
 
 def _handle_ws_message(data: dict) -> bool:
@@ -1515,17 +1548,12 @@ def _handle_ws_message(data: dict) -> bool:
     seq      = data.get("seq")
 
     if msg_type == "orderbook_snapshot":
-        if ticker:
-            if not _order_book.apply_snapshot(sid, seq, payload):
-                return True
-            _route_book_arb_check(ticker)
+        if ticker and _apply_book_frame(_order_book.apply_snapshot, sid, seq, payload, ticker):
+            return True
 
     elif msg_type == "orderbook_delta":
-        if ticker:
-            ok = _order_book.apply_delta(sid, seq, payload)
-            if not ok:
-                return True
-            _route_book_arb_check(ticker)
+        if ticker and _apply_book_frame(_order_book.apply_delta, sid, seq, payload, ticker):
+            return True
 
     elif msg_type == "ticker":
         # Props moved to orderbook_delta; this frame can only arrive from a
