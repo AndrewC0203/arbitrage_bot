@@ -22,6 +22,7 @@ from ws_manager import KalshiOrderBook, KalshiPriceCache
 
 ML_TICKER = "KXMLBGAME-26JUL041335MINNYY-MIN"
 PROP_TICKER = "KXMLBHR-26JUL012010CINMIL-MILJCHOURIO11-1"
+PROP_TICKER_NBA = "KXNBAPTS-26JUL021935LALBOS-LALLJAMES25-1"
 
 
 def _snapshot_msg(sid=1, seq=1, ticker=ML_TICKER, yes=None, no=None):
@@ -132,9 +133,10 @@ class TestWsEnvelopeOrderbook(unittest.TestCase):
         self.assertEqual(wm._order_book._best_ask[ML_TICKER], 0.42)
 
 
-class TestWsTickerPriceCache(unittest.TestCase):
-    """Fix B: ticker msgs parsed from msg envelope with *_dollars fields;
-    no_ask derived as 1 - yes_bid; updated_at only bumped on real payload."""
+class TestTickerFrameIgnored(unittest.TestCase):
+    """Task 3: props ride orderbook_delta now — a "ticker" frame can only
+    arrive from a stale server-side subscription and must be a no-op: no
+    cache mutation, no arb check triggered."""
 
     def setUp(self):
         wm._order_book = KalshiOrderBook()
@@ -143,27 +145,12 @@ class TestWsTickerPriceCache(unittest.TestCase):
         wm._poly_ws_props_token_map = {}
         wm._poly_ml_cache = None
 
-    def test_ticker_message_updates_yes_ask(self):
-        wm._handle_ws_message(_ticker_msg(yes_ask="0.2200"))
-        self.assertEqual(wm._price_cache._cache[PROP_TICKER]["yes_ask"], 0.22)
-
-    def test_ticker_message_derives_no_ask_from_yes_bid(self):
-        wm._handle_ws_message(_ticker_msg(yes_bid="0.2100"))
-        self.assertAlmostEqual(wm._price_cache._cache[PROP_TICKER]["no_ask"], 0.79)
-
-    def test_zero_yes_bid_clears_no_ask_instead_of_keeping_stale(self):
-        wm._handle_ws_message(_ticker_msg(yes_bid="0.0000"))
-        self.assertIsNone(wm._price_cache._cache[PROP_TICKER]["no_ask"])
-
-    def test_priceless_message_does_not_refresh_staleness_clock(self):
-        before = wm._price_cache._cache[PROP_TICKER]["updated_at"]
-        wm._price_cache.update_from_ws(PROP_TICKER, {"volume_fp": "1.00"})
-        self.assertEqual(wm._price_cache._cache[PROP_TICKER]["updated_at"], before)
-
-    def test_real_ticker_message_refreshes_staleness_clock(self):
-        before = wm._price_cache._cache[PROP_TICKER]["updated_at"]
-        wm._handle_ws_message(_ticker_msg())
-        self.assertGreater(wm._price_cache._cache[PROP_TICKER]["updated_at"], before)
+    def test_ticker_frame_does_not_mutate_cache_or_trigger_check(self):
+        before = dict(wm._price_cache._cache[PROP_TICKER])
+        with patch.object(wm, "_run_props_arb_check_from_ws") as props_check:
+            wm._handle_ws_message(_ticker_msg())
+        self.assertEqual(wm._price_cache._cache[PROP_TICKER], before)
+        props_check.assert_not_called()
 
 
 def _rest_prop(ticker, series="KXMLBHIT", yes=0.9, no=0.2, game_dt=None):
@@ -403,61 +390,6 @@ class TestDoubleheaderMatching(unittest.TestCase):
         self.assertEqual(arbs, [])
 
 
-class TestKalshiTickTriggersPropsCheck(unittest.TestCase):
-    """Fix C: a Kalshi-side price change must fire the props arb check
-    immediately — not wait up to 30s for the next Poly WS (CDN) update."""
-
-    def setUp(self):
-        wm._order_book = KalshiOrderBook()
-        wm._price_cache = KalshiPriceCache()
-        wm._poly_ml_cache = None
-
-    def test_ticker_price_change_triggers_props_arb_check(self):
-        wm._price_cache._cache[PROP_TICKER] = _cache_entry()
-        calls = []
-        with patch.object(wm, "_run_props_arb_check_from_ws", lambda: calls.append(1)):
-            wm._handle_ws_message(_ticker_msg())
-        self.assertEqual(len(calls), 1)
-
-    def test_ticker_for_unknown_market_does_not_trigger_check(self):
-        calls = []
-        with patch.object(wm, "_run_props_arb_check_from_ws", lambda: calls.append(1)):
-            wm._handle_ws_message(_ticker_msg(ticker="KXMLBHIT-UNKNOWN-1"))
-        self.assertEqual(calls, [])
-
-
-class TestExplicitNullClearsPrice(unittest.TestCase):
-    """Review F14.1: an explicit JSON null in yes_ask_dollars / yes_bid_dollars
-    means "no live quote" and must clear the side — only a MISSING key leaves
-    the cached price untouched."""
-
-    def setUp(self):
-        wm._order_book = KalshiOrderBook()
-        wm._price_cache = KalshiPriceCache()
-        wm._price_cache._cache[PROP_TICKER] = _cache_entry(yes_ask=0.99, no_ask=0.79)
-        wm._poly_ml_cache = None
-
-    def test_explicit_null_yes_ask_clears_stale_price(self):
-        msg = {"type": "ticker", "sid": 2,
-               "msg": {"market_ticker": PROP_TICKER,
-                       "yes_ask_dollars": None, "yes_bid_dollars": "0.2100"}}
-        wm._handle_ws_message(msg)
-        self.assertIsNone(wm._price_cache._cache[PROP_TICKER]["yes_ask"])
-
-    def test_explicit_null_yes_bid_clears_no_ask(self):
-        msg = {"type": "ticker", "sid": 2,
-               "msg": {"market_ticker": PROP_TICKER,
-                       "yes_ask_dollars": "0.2200", "yes_bid_dollars": None}}
-        wm._handle_ws_message(msg)
-        self.assertIsNone(wm._price_cache._cache[PROP_TICKER]["no_ask"])
-
-    def test_missing_keys_leave_prices_untouched(self):
-        wm._price_cache.update_from_ws(PROP_TICKER, {"volume_fp": "1.00"})
-        entry = wm._price_cache._cache[PROP_TICKER]
-        self.assertEqual(entry["yes_ask"], 0.99)
-        self.assertEqual(entry["no_ask"], 0.79)
-
-
 class TestSnapshotSeqGap(unittest.TestCase):
     """Review F14.3: seq is per-sid across ALL tickers on the stream — a gap
     crossing an orderbook_snapshot means missed deltas for OTHER tickers, so
@@ -530,6 +462,311 @@ class TestKalshiReconcile(unittest.TestCase):
         self.assertEqual(len(windows), 2)
         (s1, e1), (s2, e2) = sorted(windows)
         self.assertGreaterEqual(s2, e1)  # second fetch starts after first finishes
+
+
+class TestKalshiOrderBookProps(unittest.TestCase):
+    """Task 1 (ghost-free arbs Layer 2): prop tickers ride the same
+    snapshot/delta channel as ML but must stay invisible to
+    as_kalshi_markets(); seq gaps must also be tracked across non-book
+    ack frames (rule 19) via note_seq()."""
+
+    def setUp(self):
+        self.book = KalshiOrderBook()
+
+    def test_props_snapshot_computes_quotes_from_resting_bids(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER)
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        quotes = self.book.prop_quotes()
+        # no bid max = 0.58 -> yes_ask = 1 - 0.58 = 0.42; yes bid max = 0.37 -> no_ask = 0.63
+        self.assertEqual(quotes[PROP_TICKER]["yes_ask"], 0.42)
+        self.assertEqual(quotes[PROP_TICKER]["no_ask"], 0.63)
+        self.assertEqual(quotes[PROP_TICKER]["yes_ask_qty"], 608.52)
+        self.assertEqual(quotes[PROP_TICKER]["no_ask_qty"], 134.18)
+
+    def test_props_delta_removing_best_no_level_moves_yes_ask(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER)
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        delta = _delta_msg(seq=2, ticker=PROP_TICKER, price="0.5800", delta="-608.52", side="no")
+        self.book.apply_delta(delta["sid"], delta["seq"], delta["msg"])
+        quotes = self.book.prop_quotes()
+        # next-best NO level after removing 0.58 is 0.50 -> yes_ask = 1 - 0.50 = 0.50
+        self.assertEqual(quotes[PROP_TICKER]["yes_ask"], 0.50)
+        self.assertEqual(quotes[PROP_TICKER]["yes_ask_qty"], 10.00)
+
+    def test_seq_gap_on_prop_ticker_signals_resubscribe(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER, seq=1)
+        self.assertTrue(self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"]))
+        delta = _delta_msg(sid=1, seq=3, ticker=PROP_TICKER)  # gap: 1 -> 3
+        self.assertFalse(self.book.apply_delta(delta["sid"], delta["seq"], delta["msg"]))
+
+    def test_note_seq_absorbs_ack_frames_between_book_frames(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER, seq=1)
+        self.assertTrue(self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"]))
+        self.assertTrue(self.book.note_seq(snap["sid"], 2))  # subscribed/ok ack consumes seq 2
+        delta = _delta_msg(sid=1, seq=3, ticker=PROP_TICKER)
+        self.assertTrue(self.book.apply_delta(delta["sid"], delta["seq"], delta["msg"]))
+
+    def test_note_seq_detects_gap(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER, seq=1)
+        self.assertTrue(self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"]))
+        self.assertFalse(self.book.note_seq(snap["sid"], 5))
+
+    def test_prop_ticker_excluded_from_as_kalshi_markets(self):
+        self.book.seed_from_rest([{"ticker": ML_TICKER, "title": "t", "raw": {}}])
+        self.book.sync_prop_tickers([PROP_TICKER])
+        prop_snap = _snapshot_msg(sid=1, seq=1, ticker=PROP_TICKER)
+        self.book.apply_snapshot(prop_snap["sid"], prop_snap["seq"], prop_snap["msg"])
+        ml_snap = _snapshot_msg(sid=2, seq=1, ticker=ML_TICKER)
+        self.book.apply_snapshot(ml_snap["sid"], ml_snap["seq"], ml_snap["msg"])
+        markets = self.book.as_kalshi_markets(datetime.now(timezone.utc))
+        self.assertEqual([m["ticker"] for m in markets], [ML_TICKER])
+
+    def test_unregistered_prop_ticker_snapshot_is_silently_skipped(self):
+        # Not passed to sync_prop_tickers and not seeded as ML -> ignored.
+        snap = _snapshot_msg(ticker=PROP_TICKER_NBA)
+        result = self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        self.assertTrue(result)  # not a gap, just skipped
+        self.assertNotIn(PROP_TICKER_NBA, self.book.prop_quotes())
+
+    def test_sync_prop_tickers_evicts_dropped_ticker_state(self):
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER)
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        self.book.sync_prop_tickers([])
+        self.assertEqual(self.book.prop_quotes(), {})
+        self.assertNotIn(PROP_TICKER, self.book._books)
+        self.assertNotIn(PROP_TICKER, self.book._best_ask)
+        self.assertNotIn(PROP_TICKER, self.book._updated_at)
+
+    def test_reset_connection_clears_prop_book_state(self):
+        # Props have no _CACHE_STALE_SECONDS backstop, so a retained book from
+        # before a disconnect would serve pre-gap quotes until fresh deltas
+        # arrive — reset_connection() must drop it so props go dark instead.
+        self.book.sync_prop_tickers([PROP_TICKER])
+        snap = _snapshot_msg(ticker=PROP_TICKER)
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        self.assertIn(PROP_TICKER, self.book.prop_quotes())
+        self.book.reset_connection()
+        self.assertNotIn(PROP_TICKER, self.book.prop_quotes())
+        self.assertNotIn(PROP_TICKER, self.book._books)
+        self.assertNotIn(PROP_TICKER, self.book._best_ask)
+        self.assertNotIn(PROP_TICKER, self.book._updated_at)
+
+
+class TestWsMessageRoutesPropsToBookChannel(unittest.TestCase):
+    """Task 3 (ghost-free arbs Layer 2): props now ride orderbook_snapshot/
+    orderbook_delta — route by series prefix (SERIES_TO_SMT) to the props
+    check instead of the moneyline check, and ack frames (subscribed/ok/
+    error) must consume seq on the shared sid (rule 19) so they don't cause
+    a phantom gap on the next book frame."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._price_cache = KalshiPriceCache()
+        wm._order_book.seed_from_rest([
+            {"ticker": ML_TICKER, "title": "Minnesota @ New York Yankees Winner?", "raw": {}},
+        ])
+        wm._order_book.sync_prop_tickers([PROP_TICKER])
+        wm._poly_ml_cache = None
+        wm._props_sweep_last_at = 0.0
+        wm._props_sweep_pending = False
+
+    def test_prop_snapshot_triggers_props_check_not_moneyline(self):
+        with patch.object(wm, "_request_props_sweep") as props_check, \
+             patch.object(wm, "check_arb_moneyline") as ml_check:
+            wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER))
+        props_check.assert_called_once()
+        ml_check.assert_not_called()
+
+    def test_ml_snapshot_triggers_moneyline_check_not_props(self):
+        with patch.object(wm, "_request_props_sweep") as props_check, \
+             patch.object(wm, "check_arb_moneyline") as ml_check:
+            wm._handle_ws_message(_snapshot_msg(ticker=ML_TICKER))
+        ml_check.assert_called_once()
+        props_check.assert_not_called()
+
+    def test_prop_delta_seq_gap_signals_resubscribe(self):
+        wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
+        needs_resub = wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=5))  # gap: 1 -> 5
+        self.assertTrue(needs_resub)
+
+    def test_ack_frame_consumes_seq_no_phantom_gap(self):
+        # Not about sweep firing (that's covered elsewhere) — patch out the
+        # coalescer since its deferred branch needs a running event loop that
+        # this synchronous test doesn't provide.
+        with patch.object(wm, "_request_props_sweep"):
+            self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
+            self.assertFalse(wm._handle_ws_message({"type": "subscribed", "sid": 1, "seq": 2}))
+            self.assertFalse(wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=3)))
+
+    def test_ok_ack_frame_consumes_seq_no_phantom_gap(self):
+        # Rule 19: BOTH ack types (subscribed AND ok) consume seq on the sid.
+        with patch.object(wm, "_request_props_sweep"):
+            self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
+            self.assertFalse(wm._handle_ws_message({"type": "ok", "sid": 1, "seq": 2}))
+            self.assertFalse(wm._handle_ws_message(_delta_msg(ticker=PROP_TICKER, seq=3)))
+
+    def test_ack_frame_gap_signals_resubscribe(self):
+        self.assertFalse(wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1)))
+        needs_resub = wm._handle_ws_message({"type": "subscribed", "sid": 1, "seq": 5})  # gap: 1 -> 5
+        self.assertTrue(needs_resub)
+
+    def test_prop_delta_changing_best_no_bid_fires_props_check(self):
+        # Snapshot's best NO bid is 0.58 (qty 608.52); removing it moves the
+        # best NO bid to 0.50 — top-of-book changes, so the sweep must fire.
+        wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
+        with patch.object(wm, "_request_props_sweep") as props_check:
+            wm._handle_ws_message(
+                _delta_msg(ticker=PROP_TICKER, seq=2, price="0.5800", delta="-608.52", side="no")
+            )
+        props_check.assert_called_once()
+
+    def test_prop_delta_on_non_best_deep_level_does_not_fire_props_check(self):
+        # Snapshot's NO side has a deep level at 0.50 (qty 10.00) below the
+        # best at 0.58 — removing the deep level doesn't move the top of
+        # book, so the sweep must NOT fire.
+        wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
+        with patch.object(wm, "_request_props_sweep") as props_check:
+            wm._handle_ws_message(
+                _delta_msg(ticker=PROP_TICKER, seq=2, price="0.5000", delta="-10.00", side="no")
+            )
+        props_check.assert_not_called()
+
+    def test_prop_first_snapshot_fires_props_check(self):
+        with patch.object(wm, "_request_props_sweep") as props_check:
+            wm._handle_ws_message(_snapshot_msg(ticker=PROP_TICKER, seq=1))
+        props_check.assert_called_once()
+
+
+class TestPropsSweepCoalescer(unittest.TestCase):
+    """Connect-time bursts (thousands of prop snapshots) and Poly seed storms
+    must not fire one full sweep per frame — that sustained CPU starves the
+    event loop and misses keepalive pongs (observed live 2026-07-05: 1011
+    ping timeouts at 2793 subscribed props). _request_props_sweep() coalesces
+    those into a leading sweep plus at most one trailing sweep per window."""
+
+    def setUp(self):
+        wm._props_sweep_last_at = 0.0
+        wm._props_sweep_pending = False
+
+    def test_first_request_fires_immediately(self):
+        with patch.object(wm, "_run_props_arb_check_from_ws") as sweep:
+            wm._props_sweep_last_at = 0.0
+            wm._request_props_sweep()
+        sweep.assert_called_once()
+
+    def test_burst_collapses_to_leading_plus_one_trailing_sweep(self):
+        import asyncio
+
+        calls = []
+
+        async def scenario():
+            with patch.object(wm, "_run_props_arb_check_from_ws", lambda: calls.append(1)):
+                wm._request_props_sweep()
+                for _ in range(5):
+                    wm._request_props_sweep()
+                self.assertEqual(len(calls), 1)
+                await asyncio.sleep(0.15)
+            self.assertEqual(len(calls), 2)
+
+        asyncio.run(scenario())
+
+    def test_requests_beyond_interval_both_fire_immediately(self):
+        with patch.object(wm, "_run_props_arb_check_from_ws") as sweep:
+            wm._props_sweep_last_at = 0.0
+            wm._request_props_sweep()
+            self.assertEqual(sweep.call_count, 1)
+            # Simulate more than _PROPS_SWEEP_MIN_INTERVAL_SECONDS elapsed
+            # without a real sleep.
+            wm._props_sweep_last_at -= wm._PROPS_SWEEP_MIN_INTERVAL_SECONDS + 0.01
+            wm._request_props_sweep()
+        self.assertEqual(sweep.call_count, 2)
+
+
+class TestKalshiPropsFromBook(unittest.TestCase):
+    """Task 2 (ghost-free arbs Layer 2): the props arb path reads price/qty
+    from the order book and only metadata from KalshiPriceCache — no
+    _CACHE_STALE_SECONDS/updated_at filtering here, since book freshness is
+    guaranteed by seq-gap reconnects."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._price_cache = KalshiPriceCache()
+
+    def _seed_book(self, ticker=PROP_TICKER):
+        wm._order_book.sync_prop_tickers([ticker])
+        snap = _snapshot_msg(ticker=ticker)
+        wm._order_book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+
+    def test_builder_merges_cache_metadata_and_book_quote(self):
+        wm._price_cache._cache[PROP_TICKER] = _cache_entry()
+        self._seed_book()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(len(result), 1)
+        entry = result[0]
+        self.assertEqual(entry["ticker"], PROP_TICKER)
+        self.assertEqual(entry["player_name"], "Jackson Chourio")
+        self.assertEqual(entry["player_norm"], "jackson chourio")
+        self.assertEqual(entry["series"], "KXMLBHR")
+        self.assertEqual(entry["line"], 1)
+        # book-derived ask/qty (verified against TestKalshiOrderBookProps)
+        self.assertEqual(entry["yes_ask"], 0.42)
+        self.assertEqual(entry["no_ask"], 0.63)
+        self.assertEqual(entry["yes_ask_qty"], 608.52)
+        self.assertEqual(entry["no_ask_qty"], 134.18)
+
+    def test_no_book_quote_excludes_cache_only_entry(self):
+        wm._price_cache._cache[PROP_TICKER] = _cache_entry()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(result, [])
+
+    def test_no_cache_metadata_excludes_book_only_quote(self):
+        self._seed_book()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(result, [])
+
+    def test_game_started_over_4h_ago_excluded(self):
+        entry = _cache_entry()
+        entry["game_dt_utc"] = datetime.now(timezone.utc) - timedelta(hours=5)
+        wm._price_cache._cache[PROP_TICKER] = entry
+        self._seed_book()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(result, [])
+
+    def test_stale_cache_updated_at_does_not_exclude_when_book_is_fresh(self):
+        # 20 minutes old cache updated_at (> _CACHE_STALE_SECONDS = 300) but
+        # the book quote is live — proves the arb path no longer depends on
+        # cache freshness.
+        wm._price_cache._cache[PROP_TICKER] = _cache_entry(age_seconds=1200)
+        self._seed_book()
+        result = wm._kalshi_props_from_book(datetime.now(timezone.utc))
+        self.assertEqual(len(result), 1)
+
+
+class TestMatchPropsQty(unittest.TestCase):
+    """Task 2: match_props surfaces the book qty behind the Kalshi leg of
+    each direction as kalshi_qty_at_best; None when kalshi_props dicts lack
+    qty keys (existing tests, REST-shaped dicts)."""
+
+    def test_kalshi_qty_at_best_matches_kalshi_leg_side(self):
+        kp, pp = _match_inputs(k_yes=0.50, p_no=0.40)
+        kp[0]["yes_ask_qty"] = 12.5
+        kp[0]["no_ask_qty"] = 30.0
+        arbs = wm.match_props(kp, pp)
+        self.assertEqual(len(arbs), 1)
+        self.assertEqual(arbs[0]["leg1"], "Kalshi YES")
+        self.assertEqual(arbs[0]["kalshi_qty_at_best"], 12.5)
+
+    def test_kalshi_qty_at_best_none_when_qty_keys_absent(self):
+        kp, pp = _match_inputs(k_yes=0.50, p_no=0.40)
+        arbs = wm.match_props(kp, pp)
+        self.assertEqual(len(arbs), 1)
+        self.assertIsNone(arbs[0]["kalshi_qty_at_best"])
 
 
 if __name__ == "__main__":

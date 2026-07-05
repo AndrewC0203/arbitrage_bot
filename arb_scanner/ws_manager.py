@@ -1,9 +1,10 @@
 """
 ws_manager.py — Unified WebSocket Manager for MLB Arb
 
-Single Kalshi WS connection subscribing to two channels:
-  - orderbook_delta: moneyline markets (triggers arb check on every delta)
-  - ticker:          player prop markets (prices cached; arb checked on each Poly WS update)
+Single Kalshi WS connection, both moneyline and player props on one channel:
+  - orderbook_delta: moneyline markets (arb check on every applied delta) and
+    player props (book-sourced two-sided quotes, seq-gapped; arb check fires
+    only when a frame moves the top of book)
 
 Polymarket: authenticated WebSocket at wss://api.polymarket.us/v1/ws/markets
   - Ed25519 auth via X-PM-Access-Key / X-PM-Timestamp / X-PM-Signature headers
@@ -112,6 +113,7 @@ GHOST_LOG_FILE             = "ghost_log.jsonl"
 _GHOST_LOG_COOLDOWN_SECONDS = 60    # per (ticker, direction, reason) dedupe window
 _GHOST_SUMMARY_INTERVAL_SECONDS = 3600
 _WS_SUBSCRIBE_CHUNK_SIZE = 50
+_PROP_RESUB_INTERVAL_SECONDS = 60
 _CACHE_STALE_SECONDS  = 300
 _MAX_TIMESTAMP_SKEW_SECONDS = 10
 REQUEST_TIMEOUT       = aiohttp.ClientTimeout(total=8)
@@ -282,6 +284,7 @@ class KalshiOrderBook:
         self._sid_seq: dict[int, int] = {}                # sid → last seq seen
         self._updated_at: dict[str, datetime] = {}
         self._metadata: dict[str, dict] = {}              # ticker → {title, raw}
+        self._prop_tickers: set[str] = set()
 
     def seed_from_rest(self, markets: list[dict]) -> list[str]:
         """Store metadata from initial REST fetch. Returns ticker list for WS subscription."""
@@ -300,6 +303,17 @@ class KalshiOrderBook:
                 result.append(ticker)
         return result
 
+    def sync_prop_tickers(self, tickers) -> None:
+        """Register the live prop-ticker set for the book channel. Tickers
+        dropped from the set have their book state evicted; metadata for
+        props lives in KalshiPriceCache and is never touched here."""
+        new_tickers = set(tickers)
+        for ticker in self._prop_tickers - new_tickers:
+            self._books.pop(ticker, None)
+            self._best_ask.pop(ticker, None)
+            self._updated_at.pop(ticker, None)
+        self._prop_tickers = new_tickers
+
     @staticmethod
     def _parse_levels(levels) -> dict[int, float]:
         """Parse [["0.5800", "608.52"], ...] dollar-string levels → {cents: qty}."""
@@ -315,8 +329,32 @@ class KalshiOrderBook:
         return book
 
     def reset_connection(self) -> None:
-        """Clear per-sid seq state. Call on every (re)connect before subscribing."""
+        """Clear per-sid seq state and drop prop book state. Call on every
+        (re)connect before subscribing. ML books keep their state across the
+        gap — as_kalshi_markets() has the _CACHE_STALE_SECONDS backstop to
+        evict anything that goes stale — but props are book-or-nothing (no
+        such backstop by design), so a retained book would serve pre-gap
+        quotes for up to the reconnect+resubscribe window; dropping it here
+        makes props go dark until fresh snapshots arrive."""
         self._sid_seq.clear()
+        for ticker in self._prop_tickers:
+            self._books.pop(ticker, None)
+            self._best_ask.pop(ticker, None)
+            self._updated_at.pop(ticker, None)
+
+    def _check_seq(self, sid: Optional[int], seq: Optional[int]) -> bool:
+        """Validate + advance the per-sid seq counter. Returns False on a gap."""
+        if sid is not None and seq is not None:
+            last = self._sid_seq.get(sid)
+            if last is not None and seq != last + 1:
+                return False
+            self._sid_seq[sid] = seq
+        return True
+
+    def note_seq(self, sid: Optional[int], seq: Optional[int]) -> bool:
+        """Consume a seq number from a non-book frame (subscribed/ok ack)
+        that shares the sid's seq stream (rule 19). Returns False on a gap."""
+        return self._check_seq(sid, seq)
 
     def apply_snapshot(self, sid: Optional[int], seq: Optional[int], payload: dict) -> bool:
         """
@@ -325,13 +363,10 @@ class KalshiOrderBook:
         book, but seq is per-sid across all tickers, so the missed messages
         may have been deltas for other tickers on the stream.
         """
-        if sid is not None and seq is not None:
-            last = self._sid_seq.get(sid)
-            if last is not None and seq != last + 1:
-                return False
-            self._sid_seq[sid] = seq
+        if not self._check_seq(sid, seq):
+            return False
         ticker = payload.get("market_ticker")
-        if not ticker or ticker not in self._metadata:
+        if not ticker or (ticker not in self._metadata and ticker not in self._prop_tickers):
             return True
         self._books[ticker] = {
             "yes": self._parse_levels(payload.get("yes_dollars_fp")),
@@ -347,14 +382,11 @@ class KalshiOrderBook:
         the caller must reconnect for fresh snapshots (a gap on a sid stream
         invalidates every book on that stream, not just this ticker's).
         """
-        if sid is not None and seq is not None:
-            last = self._sid_seq.get(sid)
-            if last is not None and seq != last + 1:
-                return False
-            self._sid_seq[sid] = seq
+        if not self._check_seq(sid, seq):
+            return False
 
         ticker = payload.get("market_ticker")
-        if not ticker or ticker not in self._metadata:
+        if not ticker or (ticker not in self._metadata and ticker not in self._prop_tickers):
             return True  # unknown ticker, silently skip
 
         side = payload.get("side")
@@ -405,46 +437,65 @@ class KalshiOrderBook:
             })
         return result
 
+    def top_signature(self, ticker: str) -> Optional[tuple]:
+        """(best_yes_bid_cents, qty_at_it, best_no_bid_cents, qty_at_it) for a
+        ticker, or None when it has no non-empty book. Used to gate the props
+        sweep on top-of-book changes only — deep-book churn (~241 msg/s at
+        ~951 props) shouldn't trigger a full match_props sweep."""
+        book = self._books.get(ticker)
+        if not book:
+            return None
+        yes_levels = book.get("yes", {})
+        no_levels = book.get("no", {})
+        if not yes_levels and not no_levels:
+            return None
+        yes_bid_c = max(yes_levels) if yes_levels else None
+        no_bid_c = max(no_levels) if no_levels else None
+        return (
+            yes_bid_c, yes_levels.get(yes_bid_c) if yes_bid_c is not None else None,
+            no_bid_c, no_levels.get(no_bid_c) if no_bid_c is not None else None,
+        )
+
+    def prop_quotes(self) -> dict[str, dict]:
+        """Best yes/no ask + resting qty for registered prop tickers, derived
+        the same way as ML (ask = 1 - opposing side's best bid) but kept out
+        of as_kalshi_markets() — props are matched via match_props, not
+        matcher.match()."""
+        result = {}
+        for ticker in self._prop_tickers:
+            book = self._books.get(ticker)
+            if not book:
+                continue
+            yes_levels = book.get("yes", {})
+            no_levels = book.get("no", {})
+            yes_bid_c = max(yes_levels) if yes_levels else None
+            no_bid_c = max(no_levels) if no_levels else None
+            yes_ask = (100 - no_bid_c) / 100 if no_bid_c is not None else None
+            no_ask = (100 - yes_bid_c) / 100 if yes_bid_c is not None else None
+            if yes_ask is None and no_ask is None:
+                continue
+            result[ticker] = {
+                "yes_ask": yes_ask,
+                "no_ask": no_ask,
+                "yes_ask_qty": no_levels.get(no_bid_c) if no_bid_c is not None else None,
+                "no_ask_qty": yes_levels.get(yes_bid_c) if yes_bid_c is not None else None,
+                "updated_at": self._updated_at.get(ticker),
+            }
+        return result
+
 
 # ─── Props Price Cache (inlined from props_scanner.py) ────────────────────────
 
 class KalshiPriceCache:
     """
-    In-memory cache for Kalshi prop prices, updated by WS ticker messages.
-    Seeded from REST on startup; stale entries excluded from arb checks.
+    Metadata authority for Kalshi props (player/line/game_dt_utc/eviction),
+    seeded and refreshed via REST only. The props arb path reads prices/qty
+    from the order book (orderbook_delta channel), not from here.
     """
 
     def __init__(self):
         self._cache: dict[str, dict] = {}
         self._cache_date: Optional["datetime.date"] = None
-
-    def update_from_ws(self, ticker: str, msg: dict) -> bool:
-        """
-        Apply a ticker-channel payload (the "msg" object, already unwrapped).
-        Real feed carries yes_bid_dollars / yes_ask_dollars only — there is no
-        NO-side field, so no_ask is derived as 1 - yes_bid. A present-but-
-        unusable price (explicit null, 0, or ≥1) means "no live quote" and
-        clears the side rather than preserving a stale price; only a MISSING
-        key leaves the side untouched. Returns True if entry changed.
-        """
-        if ticker not in self._cache:
-            return False
-        entry = self._cache[ticker]
-        touched = False
-
-        if "yes_ask_dollars" in msg or "yes_ask" in msg:
-            raw_yes_ask = msg.get("yes_ask_dollars", msg.get("yes_ask"))
-            entry["yes_ask"] = self._parse_price(raw_yes_ask)
-            touched = True
-
-        if "yes_bid_dollars" in msg or "yes_bid" in msg:
-            yes_bid = self._parse_price(msg.get("yes_bid_dollars", msg.get("yes_bid")))
-            entry["no_ask"] = round(1.0 - yes_bid, 4) if yes_bid is not None else None
-            touched = True
-
-        if touched:
-            entry["updated_at"] = datetime.now(timezone.utc)
-        return touched
 
     def seed_from_rest(self, props: list[dict], authoritative_series: Optional[set] = None) -> None:
         """
@@ -511,17 +562,11 @@ class KalshiPriceCache:
         yesterday = today - timedelta(days=1)
         return [t for t, e in self._cache.items() if e["game_dt_utc"].date() >= yesterday]
 
-    @staticmethod
-    def _parse_price(raw) -> Optional[float]:
-        if raw is None:
-            return None
-        try:
-            val = float(raw)
-            if val > 1:
-                val /= 100.0
-            return val if 0 < val < 1 else None
-        except (TypeError, ValueError):
-            return None
+    def metadata_entries(self) -> list[dict]:
+        """Raw cached entry dicts — metadata authority (series/ticker/
+        player_name/player_norm/line/game_dt_utc). No freshness filtering;
+        the arb path reads prices/qty from the order book, not this cache."""
+        return list(self._cache.values())
 
 
 # ─── Arb Logic ────────────────────────────────────────────────────────────────
@@ -758,11 +803,11 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
         pair_reason_computed = False
         pair_reason = None
 
-        for direction, leg1_name, leg1_ask, leg1_fee_rate, leg2_name, leg2_ask, leg2_fee_rate in [
+        for direction, leg1_name, leg1_ask, leg1_fee_rate, leg2_name, leg2_ask, leg2_fee_rate, kalshi_qty in [
             ("Poly YES + Kalshi NO", "Poly YES", p_yes, POLYMARKET_TAKER_FEE_RATE,
-             "Kalshi NO", k_no, KALSHI_TAKER_FEE_RATE),
+             "Kalshi NO", k_no, KALSHI_TAKER_FEE_RATE, kp.get("no_ask_qty")),
             ("Kalshi YES + Poly NO", "Kalshi YES", k_yes, KALSHI_TAKER_FEE_RATE,
-             "Poly NO", p_no, POLYMARKET_TAKER_FEE_RATE),
+             "Poly NO", p_no, POLYMARKET_TAKER_FEE_RATE, kp.get("yes_ask_qty")),
         ]:
             if leg1_ask is None or leg2_ask is None:
                 continue
@@ -818,6 +863,7 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
                 # Raw Poly WS prices at match time — logged for post-hoc staleness analysis
                 "poly_ws_yes_ask": pp.get("yes_ask"),
                 "poly_ws_no_ask": pp.get("no_ask"),
+                "kalshi_qty_at_best": kalshi_qty,
             })
 
     _ghost_stats.maybe_emit_summary()
@@ -1466,6 +1512,31 @@ async def _ws_subscribe_chunks(ws, tickers: list[str], channel: str, start_id: i
 
 # ─── WS Message Handler ────────────────────────────────────────────────────────
 
+def _apply_book_frame(apply_fn, sid, seq, payload: dict, ticker: str) -> bool:
+    """
+    Apply one orderbook_snapshot/orderbook_delta frame via `apply_fn`, then
+    fire the arb check matching the frame's market type. Prop series
+    (SERIES_TO_SMT prefix) only sweep when the frame moved the top of book —
+    at ~241 msg/s of deep-book churn across ~951 props, sweeping on every
+    frame (full prop_quotes() + poly list rebuild + match_props) is enough to
+    lag the shared event loop. Moneyline sweeps on every applied frame, same
+    as before. The prop sweep is additionally coalesced (_request_props_sweep)
+    so connect-time bursts collapse into one trailing sweep instead of firing
+    per frame. Returns True if the caller should reconnect (seq gap) — a
+    skipped/unregistered ticker's None→None signature never fires either way.
+    """
+    is_prop = ticker.split("-")[0] in SERIES_TO_SMT
+    before = _order_book.top_signature(ticker) if is_prop else None
+    if not apply_fn(sid, seq, payload):
+        return True
+    if is_prop:
+        if _order_book.top_signature(ticker) != before:
+            _request_props_sweep()
+    else:
+        check_arb_moneyline(utc_now())
+    return False
+
+
 def _handle_ws_message(data: dict) -> bool:
     """
     Dispatch a single WS message. Returns True if the caller should reconnect
@@ -1480,30 +1551,26 @@ def _handle_ws_message(data: dict) -> bool:
     seq      = data.get("seq")
 
     if msg_type == "orderbook_snapshot":
-        if ticker:
-            if not _order_book.apply_snapshot(sid, seq, payload):
-                return True
-            check_arb_moneyline(utc_now())
+        if ticker and _apply_book_frame(_order_book.apply_snapshot, sid, seq, payload, ticker):
+            return True
 
     elif msg_type == "orderbook_delta":
-        if ticker:
-            ok = _order_book.apply_delta(sid, seq, payload)
-            if not ok:
-                return True
-            check_arb_moneyline(utc_now())
+        if ticker and _apply_book_frame(_order_book.apply_delta, sid, seq, payload, ticker):
+            return True
 
     elif msg_type == "ticker":
-        # Props price update — fire the arb check immediately on any change
-        # instead of waiting up to 30s for the next Poly WS (CDN) update.
-        if ticker:
-            if _price_cache.update_from_ws(ticker, payload):
-                _run_props_arb_check_from_ws()
-
-    elif msg_type == "subscribed":
+        # Props moved to orderbook_delta; this frame can only arrive from a
+        # stale server-side subscription — ignore it.
         pass
 
-    elif msg_type == "error":
-        print(f"[WS] Error from Kalshi: {data}", file=sys.stderr)
+    elif msg_type in ("subscribed", "ok", "error"):
+        if msg_type == "error":
+            print(f"[WS] Error from Kalshi: {data}", file=sys.stderr)
+        # Ack frames consume seq numbers on the shared sid (rule 19) —
+        # must be tracked or the next book frame reads as a phantom gap.
+        if sid is not None and seq is not None:
+            if not _order_book.note_seq(sid, seq):
+                return True
 
     return False
 
@@ -1530,7 +1597,10 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
 
                 next_id = 1
                 next_id = await _ws_subscribe_chunks(ws, ml_tickers,   "orderbook_delta", next_id)
-                next_id = await _ws_subscribe_chunks(ws, prop_tickers,  "ticker",          next_id)
+                _order_book.sync_prop_tickers(prop_tickers)
+                next_id = await _ws_subscribe_chunks(ws, prop_tickers,  "orderbook_delta", next_id)
+                subscribed_props_set = set(prop_tickers)
+                last_prop_resub_at = time.time()
 
                 # Re-pull props via REST on every (re)connect — no props equivalent of
                 # orderbook_snapshot to backfill the gap, so REST is the only catch-up.
@@ -1538,7 +1608,7 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
 
                 print(
                     f"[WS] Connected — {len(ml_tickers)} moneyline tickers (orderbook_delta), "
-                    f"{len(prop_tickers)} prop tickers (ticker).",
+                    f"{len(prop_tickers)} prop tickers (orderbook_delta).",
                     file=sys.stderr,
                 )
 
@@ -1563,13 +1633,40 @@ async def _kalshi_ws_task(api_key_id: str, private_key) -> None:
                         new_ml   = _order_book.today_tickers(today)
                         new_prop = _price_cache.today_tickers(today)
                         next_id = await _ws_subscribe_chunks(ws, new_ml,   "orderbook_delta", next_id)
-                        next_id = await _ws_subscribe_chunks(ws, new_prop, "ticker",          next_id)
+                        _order_book.sync_prop_tickers(new_prop)
+                        next_id = await _ws_subscribe_chunks(ws, new_prop, "orderbook_delta", next_id)
+                        subscribed_props_set = set(new_prop)
+                        last_prop_resub_at = time.time()
                         print(
-                            f"[WS] Date rollover — resubscribed {len(new_ml)} ML + {len(new_prop)} prop tickers.",
+                            f"[WS] Date rollover — resubscribed {len(new_ml)} ML + "
+                            f"{len(new_prop)} prop tickers (orderbook_delta).",
                             file=sys.stderr,
                         )
 
+                    # Mid-session prop discovery: the 60s REST reconcile discovers
+                    # newly listed props into _price_cache, but nothing subscribes
+                    # them until reconnect/rollover — resync periodically so
+                    # intra-day listings (e.g. lineup-dependent props posted 1-2h
+                    # before first pitch) don't stay invisible all session.
+                    now_epoch = time.time()
+                    if now_epoch - last_prop_resub_at >= _PROP_RESUB_INTERVAL_SECONDS:
+                        last_prop_resub_at = now_epoch
+                        current = _price_cache.today_tickers(today)
+                        new = set(current) - subscribed_props_set
+                        if new:
+                            _order_book.sync_prop_tickers(current)
+                            next_id = await _ws_subscribe_chunks(ws, sorted(new), "orderbook_delta", next_id)
+                            subscribed_props_set = set(current)
+                            print(
+                                f"[WS] Mid-session prop resync — subscribed {len(new)} newly listed prop tickers.",
+                                file=sys.stderr,
+                            )
+
         except Exception as exc:
+            # Go dark on props immediately — waiting for the next successful
+            # connect's reset_connection() would serve pre-gap book quotes to
+            # Poly-triggered sweeps for the whole backoff window.
+            _order_book.reset_connection()
             print(
                 f"[WS] Kalshi disconnected: {exc!r}. Reconnecting in {backoff}s...",
                 file=sys.stderr,
@@ -2011,6 +2108,36 @@ def _patch_poly_ml_entry(slug: str, yes_ask: Optional[float], no_ask: Optional[f
     _poly_ml_cache = (markets, utc_now())
 
 
+def _kalshi_props_from_book(now: datetime) -> list[dict]:
+    """Build kalshi_props list from the order book (price/qty authority) +
+    KalshiPriceCache (metadata authority) for match_props() consumption.
+    Only tickers present in BOTH the cache and the book emit — this is the
+    metadata-validated-before-arb-check requirement. No _CACHE_STALE_SECONDS/
+    updated_at filtering: book freshness is guaranteed by seq-gap reconnects."""
+    stale_game_cutoff = now - timedelta(hours=4)
+    quotes = _order_book.prop_quotes()
+    result = []
+    for entry in _price_cache.metadata_entries():
+        quote = quotes.get(entry["ticker"])
+        if quote is None:
+            continue
+        if entry["game_dt_utc"] < stale_game_cutoff:
+            continue
+        result.append({
+            "series": entry["series"],
+            "ticker": entry["ticker"],
+            "player_name": entry["player_name"],
+            "player_norm": entry["player_norm"],
+            "line": entry["line"],
+            "game_dt_utc": entry["game_dt_utc"],
+            "yes_ask": quote["yes_ask"],
+            "no_ask": quote["no_ask"],
+            "yes_ask_qty": quote["yes_ask_qty"],
+            "no_ask_qty": quote["no_ask_qty"],
+        })
+    return result
+
+
 def _reconstruct_poly_props_list() -> list[dict]:
     """Build poly_props list from WS cache for match_props() consumption."""
     now = datetime.now(timezone.utc)
@@ -2045,12 +2172,47 @@ def _reconstruct_poly_props_list() -> list[dict]:
     return result
 
 
+# Coalescer for the props sweep: connect-time bursts (thousands of prop
+# snapshots, each moving a top-of-book from None) and Poly seed storms would
+# otherwise fire a full sweep per frame — enough sustained CPU to starve the
+# event loop and miss keepalive pongs (observed live 2026-07-05: 1011 ping
+# timeouts at 2793 subscribed props). Leading edge fires immediately; extra
+# requests inside the window collapse into one trailing sweep so the last
+# update is never dropped.
+_PROPS_SWEEP_MIN_INTERVAL_SECONDS = 0.1
+_props_sweep_last_at = 0.0     # time.monotonic(); 0.0 = never swept
+_props_sweep_pending = False
+
+
+def _request_props_sweep() -> None:
+    global _props_sweep_last_at, _props_sweep_pending
+    if _props_sweep_pending:
+        return
+    now = time.monotonic()
+    wait = _PROPS_SWEEP_MIN_INTERVAL_SECONDS - (now - _props_sweep_last_at)
+    if wait <= 0:
+        _props_sweep_last_at = now
+        _run_props_arb_check_from_ws()
+    else:
+        _props_sweep_pending = True
+        asyncio.get_running_loop().call_later(wait, _run_deferred_props_sweep)
+
+
+def _run_deferred_props_sweep() -> None:
+    global _props_sweep_last_at, _props_sweep_pending
+    _props_sweep_pending = False
+    _props_sweep_last_at = time.monotonic()
+    _run_props_arb_check_from_ws()
+
+
 def _run_props_arb_check_from_ws() -> None:
-    """Trigger props arb check using current WS cache + Kalshi price cache."""
+    """Trigger props arb check using current WS cache + Kalshi price cache.
+    Called directly by the two 60s-cadence reconcile tasks; the hot WS frame
+    paths go through _request_props_sweep() instead so bursts coalesce."""
     global _last_status_log
     now_utc = datetime.now(timezone.utc)
     _price_cache.purge_old_date(now_utc.date())
-    kalshi_props = _price_cache.as_props_list(now_utc)
+    kalshi_props = _kalshi_props_from_book(now_utc)
     poly_props = _reconstruct_poly_props_list()
 
     if not kalshi_props:
@@ -2058,7 +2220,7 @@ def _run_props_arb_check_from_ws() -> None:
             _last_status_log = time.time()
             ts = now_utc.strftime("%H:%M:%S")
             sys.stdout.write(
-                f"\r[{ts}][POLY-WS] No props arb — 0K/{len(poly_props)}P props (Kalshi cache stale). "
+                f"\r[{ts}][POLY-WS] No props arb — 0K/{len(poly_props)}P props (no Kalshi book quotes). "
                 f"{_ghost_stats.status_summary()}".ljust(140) + "\r"
             )
             sys.stdout.flush()
@@ -2162,7 +2324,7 @@ async def _handle_poly_ws_message(data: dict) -> None:
         if is_ml:
             check_arb_moneyline(utc_now())
         if is_props:
-            _run_props_arb_check_from_ws()
+            _request_props_sweep()
         return
 
     # Full market data (order book) — not subscribed but handle gracefully
