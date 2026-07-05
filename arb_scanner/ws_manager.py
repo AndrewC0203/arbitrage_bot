@@ -1480,6 +1480,15 @@ async def _ws_subscribe_chunks(ws, tickers: list[str], channel: str, start_id: i
 
 # ─── WS Message Handler ────────────────────────────────────────────────────────
 
+def _route_book_arb_check(ticker: str) -> None:
+    """Fire the arb check matching the book frame's market type: prop series
+    (SERIES_TO_SMT prefix) → props check, anything else → moneyline."""
+    if ticker.split("-")[0] in SERIES_TO_SMT:
+        _run_props_arb_check_from_ws()
+    else:
+        check_arb_moneyline(utc_now())
+
+
 def _handle_ws_message(data: dict) -> bool:
     """
     Dispatch a single WS message. Returns True if the caller should reconnect
@@ -1497,20 +1506,14 @@ def _handle_ws_message(data: dict) -> bool:
         if ticker:
             if not _order_book.apply_snapshot(sid, seq, payload):
                 return True
-            if ticker.split("-")[0] in SERIES_TO_SMT:
-                _run_props_arb_check_from_ws()
-            else:
-                check_arb_moneyline(utc_now())
+            _route_book_arb_check(ticker)
 
     elif msg_type == "orderbook_delta":
         if ticker:
             ok = _order_book.apply_delta(sid, seq, payload)
             if not ok:
                 return True
-            if ticker.split("-")[0] in SERIES_TO_SMT:
-                _run_props_arb_check_from_ws()
-            else:
-                check_arb_moneyline(utc_now())
+            _route_book_arb_check(ticker)
 
     elif msg_type == "ticker":
         # Props moved to orderbook_delta; this frame can only arrive from a
