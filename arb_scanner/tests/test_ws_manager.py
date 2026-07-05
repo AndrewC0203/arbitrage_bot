@@ -825,5 +825,64 @@ class TestMatchPropsQty(unittest.TestCase):
         self.assertIsNone(arbs[0]["kalshi_qty_at_best"])
 
 
+class TestMlGhostFilterReason(unittest.TestCase):
+    """ML legs are OPPOSITE teams: Kalshi leg team A, Poly leg team B.
+    F2 compares mid_k vs 1 - mid_p. Soccer series are three-way: Poly leg
+    gets F1 only (complement math is invalid with draw mass)."""
+
+    def _m(self, ticker="KXMLBGAME-26JUL051400CWSCLE-CLE", team="cle",
+           slug="aec-mlb-cws-cle-2026-07-05", p_team="cws", p_ask=0.645):
+        return {"kalshi_ticker": ticker, "kalshi_team": team,
+                "polymarket_slug": slug, "polymarket_team": p_team,
+                "polymarket_ask": p_ask}
+
+    def test_clean_two_way_pair_passes(self):
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": 0.28}}
+        pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.31}   # opp side ask
+        self.assertIsNone(wm._ml_ghost_filter_reason(self._m(p_ask=0.70), kbt, pas))
+
+    def test_kalshi_pinned_leg_suppressed(self):
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.02, "yes_bid": 0.01}}
+        pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.03}
+        self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.97), kbt, pas), "pinned")
+
+    def test_mid_disagreement_uses_complement(self):
+        # Incident replay (21:47 CWS ghost): Kalshi cws mid 0.635, Poly cle
+        # mid 0.21 -> 1 - mid_p = 0.79, |diff| = 0.155 > 0.15
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CWS": {"ask": 0.64, "yes_bid": 0.63}}
+        pas = {("aec-mlb-cws-cle-2026-07-05", "cws"): 0.79}
+        m = self._m(ticker="KXMLBGAME-26JUL051400CWSCLE-CWS", team="cws",
+                    p_team="cle", p_ask=0.21)
+        self.assertEqual(wm._ml_ghost_filter_reason(m, kbt, pas), "mid_disagreement")
+
+    def test_kalshi_wide_spread_suppressed(self):
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.55, "yes_bid": 0.20}}
+        pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.40}
+        self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.40), kbt, pas), "spread")
+
+    def test_missing_kalshi_yes_bid_is_one_sided(self):
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": None}}
+        pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.31}
+        self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.68), kbt, pas), "one_sided")
+
+    def test_soccer_three_way_skips_poly_complement(self):
+        # Poly asks sum to 0.80 (draw mass) — two-way math would call this
+        # crossed/spread; soccer must pass when the Kalshi leg is healthy.
+        kbt = {"KXEPL-26AUG01ARSCHE-ARS": {"ask": 0.45, "yes_bid": 0.43}}
+        pas = {("epl-ars-che-2026-08-01", "ars"): 0.42}
+        m = self._m(ticker="KXEPL-26AUG01ARSCHE-ARS", team="ars",
+                    slug="epl-ars-che-2026-08-01", p_team="che", p_ask=0.38)
+        self.assertIsNone(wm._ml_ghost_filter_reason(m, kbt, pas))
+
+
+class TestGhostStatsScope(unittest.TestCase):
+    def test_summary_event_carries_scope(self):
+        stats = wm.GhostFilterStats(scope="moneyline")
+        stats._last_summary_at = 0.0  # force emission window open
+        with patch("ws_manager.log_event") as mock_log:
+            stats.maybe_emit_summary()
+        self.assertEqual(mock_log.call_args[0][0]["scope"], "moneyline")
+
+
 if __name__ == "__main__":
     unittest.main()

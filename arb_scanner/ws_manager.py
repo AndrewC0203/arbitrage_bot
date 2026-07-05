@@ -718,6 +718,57 @@ def _ghost_filter_reason(kp: dict, pp: dict) -> Optional[str]:
     return None
 
 
+# Soccer games carry draw probability mass, so the two Poly team asks do NOT
+# sum to ~1 and yes_bid = 1 - opp_ask is invalid — Poly leg gets F1 only.
+_THREE_WAY_SERIES = {"KXEPL", "KXMLS", "KXCHAMPIONS"}
+
+
+def _ml_ghost_filter_reason(m: dict, kalshi_by_ticker: dict,
+                            poly_ask_by_side: dict) -> Optional[str]:
+    """
+    F1/F2/F4 for a moneyline match dict. ML legs are opposite teams —
+    Kalshi leg is m["kalshi_team"], Poly leg is m["polymarket_team"] — so
+    mid agreement compares mid_k against 1 - mid_p. F3 (edge cap) stays at
+    the call site, same split as match_props.
+    """
+    km = kalshi_by_ticker.get(m["kalshi_ticker"])
+    if km is None:
+        return "one_sided"
+    k_yes_ask, k_yes_bid = km["ask"], km.get("yes_bid")
+    pin_ask = round(1.0 - GHOST_PIN_PROB, 4)
+    # F1 — either leg priced as effectively resolved
+    if k_yes_bid is not None and k_yes_bid >= GHOST_PIN_PROB:
+        return "pinned"
+    if k_yes_ask <= pin_ask:
+        return "pinned"
+    p_yes_ask = m["polymarket_ask"]
+    if p_yes_ask <= pin_ask:
+        return "pinned"
+    p_opp_ask = poly_ask_by_side.get((m["polymarket_slug"], m["kalshi_team"]))
+    three_way = m["kalshi_ticker"].split("-")[0] in _THREE_WAY_SERIES
+    p_yes_bid = None
+    if not three_way and p_opp_ask is not None:
+        p_yes_bid = round(1.0 - p_opp_ask, 4)
+        if p_yes_bid >= GHOST_PIN_PROB:
+            return "pinned"
+    if k_yes_bid is None:
+        return "one_sided"
+    # F4 — spread sanity (crossed or canyon-wide book)
+    k_spread = round(k_yes_ask - k_yes_bid, 4)
+    if k_spread < 0 or k_spread > GHOST_MAX_SPREAD:
+        return "spread"
+    if p_yes_bid is not None:
+        p_spread = round(p_yes_ask - p_yes_bid, 4)
+        if p_spread < 0 or p_spread > GHOST_MAX_SPREAD:
+            return "spread"
+        # F2 — opposite teams: compare mid_k to the complement of mid_p
+        mid_k = (k_yes_ask + k_yes_bid) / 2
+        mid_p = (p_yes_ask + p_yes_bid) / 2
+        if round(abs(mid_k - (1.0 - mid_p)), 4) > GHOST_MID_DISAGREEMENT_MAX:
+            return "mid_disagreement"
+    return None
+
+
 class GhostFilterStats:
     """
     Per-reason suppression counters + deduped ghost_log.jsonl writer + hourly
@@ -728,7 +779,8 @@ class GhostFilterStats:
 
     REASONS = ("pinned", "mid_disagreement", "edge_cap", "spread", "one_sided")
 
-    def __init__(self):
+    def __init__(self, scope: str = "props"):
+        self.scope = scope
         self.totals = {r: 0 for r in self.REASONS}
         self._window = {r: 0 for r in self.REASONS}
         self._last_summary_at = time.time()
@@ -753,6 +805,7 @@ class GhostFilterStats:
         log_event({
             "event": "ghost_filter_summary",
             "timestamp": utc_now(),
+            "scope": self.scope,
             "window_seconds": window_seconds,
             "suppressed": dict(self._window),
             "totals": dict(self.totals),
@@ -770,6 +823,7 @@ class GhostFilterStats:
 
 
 _ghost_stats = GhostFilterStats()
+_ml_ghost_stats = GhostFilterStats(scope="moneyline")
 
 
 def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
