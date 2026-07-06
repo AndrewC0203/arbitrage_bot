@@ -601,7 +601,7 @@ class OpportunityTracker:
         return self._build_event(
             "opened", opp_id, m, now,
             kalshi_fetched_at, polymarket_fetched_at,
-            False, duration_seconds=None,
+            False, duration_ms=None,
         )
 
     def process(
@@ -624,22 +624,22 @@ class OpportunityTracker:
                 events.append(self._build_event(
                     "opened", opp_id, m, now,
                     kalshi_fetched_at, polymarket_fetched_at,
-                    timestamp_skew_warning, duration_seconds=None,
+                    timestamp_skew_warning, duration_ms=None,
                 ))
             else:
                 rec = self._open[key]
                 rec["last_seen"] = now
                 rec["last_match"] = m
-                duration = self._duration(rec["opened_at"], now)
+                duration = self._duration_ms(rec["opened_at"], now)
                 events.append(self._build_event(
                     "updated", rec["opportunity_id"], m, now,
                     kalshi_fetched_at, polymarket_fetched_at,
-                    timestamp_skew_warning, duration_seconds=duration,
+                    timestamp_skew_warning, duration_ms=duration,
                 ))
 
         for key in set(self._open.keys()) - set(current_keys.keys()):
             rec = self._open.pop(key)
-            duration = self._duration(rec["opened_at"], now)
+            duration = self._duration_ms(rec["opened_at"], now)
             last_m = rec.get("last_match", {})
             events.append({
                 "event": "closed",
@@ -659,7 +659,7 @@ class OpportunityTracker:
                 "polymarket_taker_fee": last_m.get("polymarket_taker_fee"),
                 "total_cost": last_m.get("total_cost"),
                 "gap_cents": last_m.get("gap_cents"),
-                "duration_seconds": duration,
+                "duration_ms": duration,
             })
         return events
 
@@ -667,15 +667,15 @@ class OpportunityTracker:
         return list(self._open.values())
 
     @staticmethod
-    def _duration(opened_at: str, now: str) -> float:
+    def _duration_ms(opened_at: str, now: str) -> int:
         try:
-            return round((datetime.fromisoformat(now) - datetime.fromisoformat(opened_at)).total_seconds(), 2)
+            return round((datetime.fromisoformat(now) - datetime.fromisoformat(opened_at)).total_seconds() * 1000)
         except Exception:
-            return 0.0
+            return 0
 
     @staticmethod
     def _build_event(event_type, opp_id, m, now, kalshi_fetched_at,
-                     polymarket_fetched_at, timestamp_skew_warning, duration_seconds) -> dict:
+                     polymarket_fetched_at, timestamp_skew_warning, duration_ms) -> dict:
         return {
             "event": event_type,
             "opportunity_id": opp_id,
@@ -696,7 +696,7 @@ class OpportunityTracker:
             "polymarket_taker_fee": m["polymarket_taker_fee"],
             "total_cost": m["total_cost"],
             "gap_cents": m["gap_cents"],
-            "duration_seconds": duration_seconds,
+            "duration_ms": duration_ms,
         }
 
 
@@ -1321,7 +1321,7 @@ def _emit_prop_arbs(arbs: list[dict], timestamp: str) -> None:
             duration = ""
             try:
                 dt = (datetime.fromisoformat(timestamp) - datetime.fromisoformat(rec["opened_at"])).total_seconds()
-                duration = f" (open {int(dt)}s)"
+                duration = f" (open {round(dt * 1000)}ms)"
             except Exception:
                 pass
             print(
@@ -1708,8 +1708,8 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
             name  = ev.get("market_name", "?")
             total = ev.get("total_cost") or 0.0
             gap   = ev.get("gap_cents") or 0.0
-            dur   = ev.get("duration_seconds")
-            dur_s = f"{int(dur)}s" if dur is not None else "<1s"
+            dur   = ev.get("duration_ms")
+            dur_s = f"{dur}ms" if dur is not None else "<1ms"
             k_ask = ev.get("kalshi_ask") or 0.0
             p_ask = ev.get("polymarket_ask") or 0.0
             sides = (f"Kalshi YES {ev.get('kalshi_team') or '?'}={k_ask:.2f} + "

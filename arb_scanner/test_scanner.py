@@ -667,7 +667,7 @@ class TestOpportunityTrackerLifecycle(unittest.TestCase):
         t = OpportunityTracker()
         m = self._arb_match()
         events = _tracker_process(t, [m])
-        assert events[0]["duration_seconds"] is None
+        assert events[0]["duration_ms"] is None
 
     def test_OT08_duration_nonnull_on_updated(self):
         t = OpportunityTracker()
@@ -675,15 +675,21 @@ class TestOpportunityTrackerLifecycle(unittest.TestCase):
         _tracker_process(t, [m])
         time.sleep(0.05)
         events = _tracker_process(t, [m])
-        assert events[0]["duration_seconds"] is not None
-        assert events[0]["duration_seconds"] >= 0
+        assert events[0]["duration_ms"] is not None
+        assert events[0]["duration_ms"] >= 0
 
     def test_OT09_duration_nonnull_on_closed(self):
         t = OpportunityTracker()
         m = self._arb_match()
         _tracker_process(t, [m])
         events = _tracker_process(t, [])
-        assert events[0]["duration_seconds"] is not None
+        assert events[0]["duration_ms"] is not None
+
+    def test_OT09b_duration_is_integer_milliseconds(self):
+        ms = OpportunityTracker._duration_ms(
+            "2026-07-05T00:00:00+00:00", "2026-07-05T00:00:01.500000+00:00")
+        assert ms == 1500
+        assert isinstance(ms, int)
 
     def test_OT10_two_markets_tracked_independently(self):
         # Two separate arb opportunities — each gets own UUID
