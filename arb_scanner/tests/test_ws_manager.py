@@ -1011,5 +1011,51 @@ class TestMlRestConfirm(unittest.TestCase):
         self.assertTrue(wm._ml_tracker.has_match(self.m))
 
 
+class TestMlConfirmGateNoEventLoop(unittest.TestCase):
+    """check_arb_moneyline called synchronously with NO running event loop
+    (startup seed path) must skip the confirm gate without ever constructing
+    the coroutine object — else `create_task(coro)` evaluates the coroutine
+    call first, the RuntimeError leaves it unawaited, and every cold-start
+    tick with a new arb candidate spews `RuntimeWarning: coroutine ... was
+    never awaited` on stderr."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._ml_tracker = wm.OpportunityTracker()
+        wm._ml_ghost_stats = wm.GhostFilterStats(scope="moneyline")
+        wm._ml_confirm_cooldown.clear()
+
+    def test_no_loop_skips_gate_without_building_coroutine(self):
+        # Healthy two-way fixture that passes F1-F4 and the edge cap:
+        # mid_k 0.285; poly yes_bid = 1 - 0.40 = 0.60, mid_p 0.61,
+        # 1 - mid_p = 0.39, |0.285 - 0.39| = 0.105 <= 0.15; spreads 0.01/0.02.
+        kalshi = [{"ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE", "title": "X",
+                   "ask": 0.29, "yes_bid": 0.28, "taker_fee": 0.0144, "raw": {}}]
+        poly = [{"slug": "s", "team_abbr": "cws", "ask": 0.62, "taker_fee": 0.0141,
+                 "title": "X", "raw": {}},
+                {"slug": "s", "team_abbr": "cle", "ask": 0.40, "taker_fee": 0.0144,
+                 "title": "X", "raw": {}}]
+        m = {"market_name": "X", "kalshi_ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE",
+             "kalshi_team": "cle", "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+             "polymarket_slug": "s", "polymarket_team": "cws",
+             "polymarket_ask": 0.62, "polymarket_taker_fee": 0.0141,
+             "total_cost": 0.9385, "gap_cents": 2.15, "is_arb": True}
+        with patch.object(wm, "GLOBAL_MATCHERS", [type("M", (), {
+                 "match": staticmethod(lambda k, p: [m])})()]), \
+             patch.object(wm._order_book, "as_kalshi_markets",
+                          lambda now: kalshi), \
+             patch("ws_manager.log_event") as mock_log, \
+             patch("ws_manager._append_ghost_log"), \
+             patch("ws_manager._ml_rest_confirm_and_open") as mock_gate:
+            wm._poly_ml_cache = (poly, wm.utc_now())
+            wm.check_arb_moneyline(wm.utc_now())
+        # No running loop: the coroutine function must never be invoked —
+        # a constructed-but-unscheduled coroutine leaks a RuntimeWarning.
+        mock_gate.assert_not_called()
+        opened = [c for c in mock_log.call_args_list
+                  if c[0][0].get("event") == "opened"]
+        self.assertEqual(opened, [])
+
+
 if __name__ == "__main__":
     unittest.main()

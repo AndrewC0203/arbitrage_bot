@@ -1650,10 +1650,12 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
             if now_epoch - _ml_confirm_cooldown.get(key, 0.0) >= _KALSHI_CONFIRM_COOLDOWN_SECONDS:
                 _ml_confirm_cooldown[key] = now_epoch
                 try:
-                    asyncio.create_task(_ml_rest_confirm_and_open(
-                        m, kalshi_updated_at, poly_fetched_at))
+                    loop = asyncio.get_running_loop()
                 except RuntimeError:
                     pass  # no running loop (startup seed path) — retried next check
+                else:
+                    loop.create_task(_ml_rest_confirm_and_open(
+                        m, kalshi_updated_at, poly_fetched_at))
             continue
         tracker_input.append(m)
     events = _ml_tracker.process(tracker_input, kalshi_updated_at,
