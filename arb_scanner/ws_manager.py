@@ -743,13 +743,39 @@ def _ghost_filter_reason(kp: dict, pp: dict) -> Optional[str]:
 _THREE_WAY_SERIES = {"KXEPL", "KXMLS", "KXCHAMPIONS"}
 
 
+def _resolve_opp_ask(sides: list[tuple[str, float]], m: dict) -> Optional[float]:
+    """Pick the opposite side's ask from a two-way slug's (team_abbr, ask)
+    pair. Matcher team names are normalized per-sport, so try raw-abbr
+    equality first, then fall back to ask equality against the matched leg
+    (both legs came from the same cache snapshot). Tied asks are the same
+    value either way."""
+    (t1, a1), (t2, a2) = sides
+    p_team = m.get("polymarket_team")
+    if t1 == p_team:
+        return a2
+    if t2 == p_team:
+        return a1
+    p_ask = m["polymarket_ask"]
+    if a1 == p_ask and a2 == p_ask:
+        return a1
+    if a1 == p_ask:
+        return a2
+    if a2 == p_ask:
+        return a1
+    return None
+
+
 def _ml_ghost_filter_reason(m: dict, kalshi_by_ticker: dict,
-                            poly_ask_by_side: dict) -> Optional[str]:
+                            poly_sides_by_slug: dict) -> Optional[str]:
     """
     F1/F2/F4 for a moneyline match dict. ML legs are opposite teams —
     Kalshi leg is m["kalshi_team"], Poly leg is m["polymarket_team"] — so
     mid agreement compares mid_k against 1 - mid_p. F3 (edge cap) stays at
-    the call site, same split as match_props.
+    the call site, same split as match_props. Two-way markets need the
+    opposite Poly side's ask to derive a yes_bid; matcher team strings are
+    normalized per-sport (tennis/basketball) so they can't be joined against
+    the raw Poly team_abbr — instead a slug's two sides are resolved via
+    _resolve_opp_ask. A slug without exactly two sides is one_sided.
     """
     km = kalshi_by_ticker.get(m["kalshi_ticker"])
     if km is None:
@@ -764,10 +790,13 @@ def _ml_ghost_filter_reason(m: dict, kalshi_by_ticker: dict,
     p_yes_ask = m["polymarket_ask"]
     if p_yes_ask <= pin_ask:
         return "pinned"
-    p_opp_ask = poly_ask_by_side.get((m["polymarket_slug"], m["kalshi_team"]))
     three_way = m["kalshi_ticker"].split("-")[0] in _THREE_WAY_SERIES
     p_yes_bid = None
     if not three_way:
+        sides = poly_sides_by_slug.get(m["polymarket_slug"], [])
+        if len(sides) != 2:
+            return "one_sided"
+        p_opp_ask = _resolve_opp_ask(sides, m)
         if p_opp_ask is None:
             return "one_sided"
         p_yes_bid = round(1.0 - p_opp_ask, 4)
@@ -1606,12 +1635,14 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
     # Ghost gate (F1/F2/F4 pair-level, F3 edge cap) — mirror of match_props.
     # Suppressed matches flip to is_arb=False so open arbs still close.
     kalshi_by_ticker = {km["ticker"]: km for km in kalshi_markets}
-    poly_ask_by_side = {(pm["slug"], pm["team_abbr"]): pm["ask"]
-                        for pm in poly_markets}
+    poly_sides_by_slug: dict[str, list[tuple[str, float]]] = {}
+    for pm in poly_markets:
+        poly_sides_by_slug.setdefault(pm["slug"], []).append(
+            (pm["team_abbr"], pm["ask"]))
     for m in matches:
         if not m["is_arb"]:
             continue
-        reason = _ml_ghost_filter_reason(m, kalshi_by_ticker, poly_ask_by_side)
+        reason = _ml_ghost_filter_reason(m, kalshi_by_ticker, poly_sides_by_slug)
         if reason is None and m["gap_cents"] > GHOST_MAX_GAP_CENTS:
             reason = "edge_cap"
         if reason is not None:

@@ -838,36 +838,37 @@ class TestMlGhostFilterReason(unittest.TestCase):
 
     def test_clean_two_way_pair_passes(self):
         kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": 0.28}}
-        pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.31}   # opp side ask
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.70), ("cle", 0.31)]}
         self.assertIsNone(wm._ml_ghost_filter_reason(self._m(p_ask=0.70), kbt, pas))
 
     def test_kalshi_pinned_leg_suppressed(self):
         kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.02, "yes_bid": 0.01}}
-        pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.03}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.97), ("cle", 0.03)]}
         self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.97), kbt, pas), "pinned")
 
     def test_mid_disagreement_uses_complement(self):
         # Incident replay (21:47 CWS ghost): Kalshi cws mid 0.635, Poly cle
         # mid 0.21 -> 1 - mid_p = 0.79, |diff| = 0.155 > 0.15
         kbt = {"KXMLBGAME-26JUL051400CWSCLE-CWS": {"ask": 0.64, "yes_bid": 0.63}}
-        pas = {("aec-mlb-cws-cle-2026-07-05", "cws"): 0.79}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.79), ("cle", 0.21)]}
         m = self._m(ticker="KXMLBGAME-26JUL051400CWSCLE-CWS", team="cws",
                     p_team="cle", p_ask=0.21)
         self.assertEqual(wm._ml_ghost_filter_reason(m, kbt, pas), "mid_disagreement")
 
     def test_kalshi_wide_spread_suppressed(self):
         kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.55, "yes_bid": 0.20}}
-        pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.40}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.40), ("cle", 0.40)]}
         self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.40), kbt, pas), "spread")
 
     def test_missing_kalshi_yes_bid_is_one_sided(self):
         kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": None}}
-        pas = {("aec-mlb-cws-cle-2026-07-05", "cle"): 0.31}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.68), ("cle", 0.31)]}
         self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.68), kbt, pas), "one_sided")
 
     def test_two_way_missing_poly_opp_ask_is_one_sided(self):
-        # Two-way market with no (slug, kalshi_team) entry in poly_ask_by_side:
-        # Poly leg has no derivable yes_bid — must read "one_sided", not pass.
+        # Two-way market with no entry (or fewer than two sides) for the slug
+        # in poly_sides_by_slug: Poly leg has no derivable yes_bid — must
+        # read "one_sided", not pass.
         kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": 0.28}}
         self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.70), kbt, {}), "one_sided")
 
@@ -875,9 +876,24 @@ class TestMlGhostFilterReason(unittest.TestCase):
         # Poly asks sum to 0.80 (draw mass) — two-way math would call this
         # crossed/spread; soccer must pass when the Kalshi leg is healthy.
         kbt = {"KXEPL-26AUG01ARSCHE-ARS": {"ask": 0.45, "yes_bid": 0.43}}
-        pas = {("epl-ars-che-2026-08-01", "ars"): 0.42}
+        pas = {"epl-ars-che-2026-08-01": [("ars", 0.42), ("che", 0.38)]}
         m = self._m(ticker="KXEPL-26AUG01ARSCHE-ARS", team="ars",
                     slug="epl-ars-che-2026-08-01", p_team="che", p_ask=0.38)
+        self.assertIsNone(wm._ml_ghost_filter_reason(m, kbt, pas))
+
+    def test_tennis_cross_namespace_pair_resolves_by_ask_equality(self):
+        # Tennis emits normalize_name() full names on both matcher-side team
+        # fields ("carlos alcaraz" / "novak djokovic"), which never equal the
+        # raw Poly participant abbrs in the slug's side list ("c. alcaraz" /
+        # "n. djokovic"). A join keyed on team-string equality misses every
+        # tennis (and basketball) pair — _resolve_opp_ask must fall back to
+        # matching the matched leg's ask value instead.
+        kbt = {"KXATPMATCH-26JUL05ALCDJO-ALC": {"ask": 0.30, "yes_bid": 0.28}}
+        pas = {"atp-alcaraz-djokovic-2026-07-05":
+               [("c. alcaraz", 0.34), ("n. djokovic", 0.68)]}
+        m = self._m(ticker="KXATPMATCH-26JUL05ALCDJO-ALC", team="carlos alcaraz",
+                    slug="atp-alcaraz-djokovic-2026-07-05",
+                    p_team="novak djokovic", p_ask=0.68)
         self.assertIsNone(wm._ml_ghost_filter_reason(m, kbt, pas))
 
 
