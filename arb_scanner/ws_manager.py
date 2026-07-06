@@ -1143,7 +1143,8 @@ async def _ml_rest_confirm_and_open(m: dict, kalshi_fetched_at: str,
         total = (confirmed + kalshi_taker_fee(confirmed)
                  + p_ask + polymarket_taker_fee(p_ask))
         if total >= ARB_THRESHOLD:
-            _reject("threshold_not_met_after_rest", rest_total=round(total, 4))
+            _reject("threshold_not_met_after_rest", rest_total=round(total, 4),
+                    ws_total=round(m["total_cost"], 4))
             return
         gap = round((ARB_THRESHOLD - total) * 100, 2)
         if gap > GHOST_MAX_GAP_CENTS:
@@ -1166,6 +1167,12 @@ async def _ml_rest_confirm_and_open(m: dict, kalshi_fetched_at: str,
               f"= ${total:.3f} gap={gap:.1f}¢")
     except Exception as e:
         print(f"[WS] ML REST confirm failed for {ticker}: {e}", file=sys.stderr)
+        log_event({"event": "ghost_rejected", "timestamp": utc_now(),
+                   "scope": "moneyline", "reason": "rest_error",
+                   "kalshi_ticker": ticker,
+                   "ws_kalshi_ask": m["kalshi_ask"],
+                   "polymarket_ask": m["polymarket_ask"],
+                   "error": str(e)})
 
 
 class PropArbTracker:
@@ -1683,7 +1690,7 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
-                    pass  # no running loop (startup seed path) — retried next check
+                    pass  # no running loop (startup seed path) — retried after cooldown expiry
                 else:
                     loop.create_task(_ml_rest_confirm_and_open(
                         m, kalshi_updated_at, poly_fetched_at))

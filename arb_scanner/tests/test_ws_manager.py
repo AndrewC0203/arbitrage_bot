@@ -1026,6 +1026,29 @@ class TestMlRestConfirm(unittest.TestCase):
         self.assertEqual(opened[0]["kalshi_ask"], 0.29)
         self.assertTrue(wm._ml_tracker.has_match(self.m))
 
+    def test_threshold_not_met_after_rest_carries_ws_total(self):
+        mock_log = self._confirm(rest_yes_ask=0.36)
+        rejected = [c[0][0] for c in mock_log.call_args_list
+                    if c[0][0]["event"] == "ghost_rejected"]
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0]["reason"], "threshold_not_met_after_rest")
+        self.assertEqual(rejected[0]["ws_total"], round(self.m["total_cost"], 4))
+
+    def test_rest_fetch_exception_logs_rest_error(self):
+        import asyncio
+        with patch("ws_manager.requests.get", side_effect=Exception("boom")), \
+             patch("ws_manager.log_event") as mock_log:
+            asyncio.run(wm._ml_rest_confirm_and_open(
+                self.m, wm.utc_now(), wm.utc_now()))
+        rejected = [c[0][0] for c in mock_log.call_args_list
+                    if c[0][0]["event"] == "ghost_rejected"]
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0]["reason"], "rest_error")
+        self.assertEqual(rejected[0]["scope"], "moneyline")
+        self.assertEqual(rejected[0]["kalshi_ticker"], "T1")
+        self.assertEqual(rejected[0]["error"], "boom")
+        self.assertFalse(wm._ml_tracker.has_match(self.m))
+
 
 class TestMlConfirmGateNoEventLoop(unittest.TestCase):
     """check_arb_moneyline called synchronously with NO running event loop
