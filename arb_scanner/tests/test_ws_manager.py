@@ -1098,3 +1098,55 @@ class TestMlConfirmGateNoEventLoop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKalshiQtyAtBest(unittest.TestCase):
+    """Contracts takeable at the displayed YES ask = size resting at the best
+    NO bid. Exposed as qty_at_best by as_kalshi_markets(), stamped onto ML
+    match dicts by check_arb_moneyline, and carried on tracker events as
+    kalshi_qty_at_best. (Poly marketDataLite has no size fields.)"""
+
+    def setUp(self):
+        self.book = KalshiOrderBook()
+        self.book.seed_from_rest([{"ticker": ML_TICKER, "title": "t", "raw": {}}])
+
+    def test_qty_at_best_is_size_at_best_no_bid(self):
+        snap = _snapshot_msg()  # best NO bid 0.58 carries 608.52
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        m = self.book.as_kalshi_markets(datetime.now(timezone.utc))[0]
+        self.assertEqual(m["qty_at_best"], 608.52)
+
+    def test_opened_event_carries_kalshi_qty_at_best(self):
+        tr = wm.OpportunityTracker()
+        m = {"market_name": "X", "kalshi_ticker": "T1", "kalshi_team": "a",
+             "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+             "polymarket_slug": "s1", "polymarket_team": "b",
+             "polymarket_ask": 0.62, "polymarket_taker_fee": 0.0141,
+             "total_cost": 0.9385, "gap_cents": 2.15, "is_arb": True,
+             "kalshi_qty_at_best": 608.52}
+        ev = tr.mark_opened(m, wm.utc_now(), wm.utc_now())
+        self.assertEqual(ev["kalshi_qty_at_best"], 608.52)
+
+    def test_check_arb_moneyline_stamps_qty_onto_matches(self):
+        wm._ml_tracker = wm.OpportunityTracker()
+        wm._ml_ghost_stats = wm.GhostFilterStats(scope="moneyline")
+        m = {"market_name": "X", "kalshi_ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE",
+             "kalshi_team": "cle", "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+             "polymarket_slug": "s", "polymarket_team": "cws",
+             "polymarket_ask": 0.645, "polymarket_taker_fee": 0.0134,
+             "total_cost": 0.945, "gap_cents": 1.5, "is_arb": True}
+        kalshi = [{"ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE", "title": "X",
+                   "ask": 0.29, "yes_bid": None, "taker_fee": 0.0144,
+                   "qty_at_best": 55.0, "raw": {}}]
+        poly = [{"slug": "s", "team_abbr": "cws", "ask": 0.645, "taker_fee": 0.0134,
+                 "title": "X", "raw": {}}]
+        with patch.object(wm, "GLOBAL_MATCHERS", [type("M", (), {
+                 "match": staticmethod(lambda k, p: [m])})()]), \
+             patch.object(wm, "_order_book", KalshiOrderBook()), \
+             patch.object(wm._order_book, "as_kalshi_markets",
+                          lambda now: kalshi), \
+             patch("ws_manager.log_event"), \
+             patch("ws_manager._append_ghost_log"):
+            wm._poly_ml_cache = (poly, wm.utc_now())
+            wm.check_arb_moneyline(wm.utc_now())
+        self.assertEqual(m["kalshi_qty_at_best"], 55.0)
