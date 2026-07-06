@@ -560,6 +560,28 @@ class TestKalshiOrderBookProps(unittest.TestCase):
         self.assertNotIn(PROP_TICKER, self.book._updated_at)
 
 
+class TestAsKalshiMarketsYesBid(unittest.TestCase):
+    """Task 1 (ghost-free arbs Layer 2): as_kalshi_markets() exposes yes_bid
+    (best resting YES bid in dollars) for Layer 2 moneyline ghost filters to
+    consume."""
+
+    def setUp(self):
+        self.book = KalshiOrderBook()
+        self.book.seed_from_rest([{"ticker": ML_TICKER, "title": "t", "raw": {}}])
+
+    def test_yes_bid_is_best_yes_level(self):
+        snap = _snapshot_msg()  # default yes levels: 0.01 and 0.37
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        m = self.book.as_kalshi_markets(datetime.now(timezone.utc))[0]
+        self.assertEqual(m["yes_bid"], 0.37)
+
+    def test_yes_bid_none_when_yes_side_empty(self):
+        snap = _snapshot_msg(yes=[], no=[["0.5800", "608.52"]])
+        self.book.apply_snapshot(snap["sid"], snap["seq"], snap["msg"])
+        m = self.book.as_kalshi_markets(datetime.now(timezone.utc))[0]
+        self.assertIsNone(m["yes_bid"])
+
+
 class TestOrderBookFloatDust(unittest.TestCase):
     """Deltas arrive as 2-decimal dollar strings but were accumulated as raw
     floats: fully consuming a level can leave a +1e-13 residue, which
@@ -801,6 +823,277 @@ class TestMatchPropsQty(unittest.TestCase):
         arbs = wm.match_props(kp, pp)
         self.assertEqual(len(arbs), 1)
         self.assertIsNone(arbs[0]["kalshi_qty_at_best"])
+
+
+class TestMlGhostFilterReason(unittest.TestCase):
+    """ML legs are OPPOSITE teams: Kalshi leg team A, Poly leg team B.
+    F2 compares mid_k vs 1 - mid_p. Soccer series are three-way: Poly leg
+    gets F1 only (complement math is invalid with draw mass)."""
+
+    def _m(self, ticker="KXMLBGAME-26JUL051400CWSCLE-CLE", team="cle",
+           slug="aec-mlb-cws-cle-2026-07-05", p_team="cws", p_ask=0.645):
+        return {"kalshi_ticker": ticker, "kalshi_team": team,
+                "polymarket_slug": slug, "polymarket_team": p_team,
+                "polymarket_ask": p_ask}
+
+    def test_clean_two_way_pair_passes(self):
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": 0.28}}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.70), ("cle", 0.31)]}
+        self.assertIsNone(wm._ml_ghost_filter_reason(self._m(p_ask=0.70), kbt, pas))
+
+    def test_kalshi_pinned_leg_suppressed(self):
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.02, "yes_bid": 0.01}}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.97), ("cle", 0.03)]}
+        self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.97), kbt, pas), "pinned")
+
+    def test_mid_disagreement_uses_complement(self):
+        # Incident replay (21:47 CWS ghost): Kalshi cws mid 0.635, Poly cle
+        # mid 0.21 -> 1 - mid_p = 0.79, |diff| = 0.155 > 0.15
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CWS": {"ask": 0.64, "yes_bid": 0.63}}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.79), ("cle", 0.21)]}
+        m = self._m(ticker="KXMLBGAME-26JUL051400CWSCLE-CWS", team="cws",
+                    p_team="cle", p_ask=0.21)
+        self.assertEqual(wm._ml_ghost_filter_reason(m, kbt, pas), "mid_disagreement")
+
+    def test_kalshi_wide_spread_suppressed(self):
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.55, "yes_bid": 0.20}}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.40), ("cle", 0.40)]}
+        self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.40), kbt, pas), "spread")
+
+    def test_missing_kalshi_yes_bid_is_one_sided(self):
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": None}}
+        pas = {"aec-mlb-cws-cle-2026-07-05": [("cws", 0.68), ("cle", 0.31)]}
+        self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.68), kbt, pas), "one_sided")
+
+    def test_two_way_missing_poly_opp_ask_is_one_sided(self):
+        # Two-way market with no entry (or fewer than two sides) for the slug
+        # in poly_sides_by_slug: Poly leg has no derivable yes_bid — must
+        # read "one_sided", not pass.
+        kbt = {"KXMLBGAME-26JUL051400CWSCLE-CLE": {"ask": 0.30, "yes_bid": 0.28}}
+        self.assertEqual(wm._ml_ghost_filter_reason(self._m(p_ask=0.70), kbt, {}), "one_sided")
+
+    def test_soccer_three_way_skips_poly_complement(self):
+        # Poly asks sum to 0.80 (draw mass) — two-way math would call this
+        # crossed/spread; soccer must pass when the Kalshi leg is healthy.
+        kbt = {"KXEPL-26AUG01ARSCHE-ARS": {"ask": 0.45, "yes_bid": 0.43}}
+        pas = {"epl-ars-che-2026-08-01": [("ars", 0.42), ("che", 0.38)]}
+        m = self._m(ticker="KXEPL-26AUG01ARSCHE-ARS", team="ars",
+                    slug="epl-ars-che-2026-08-01", p_team="che", p_ask=0.38)
+        self.assertIsNone(wm._ml_ghost_filter_reason(m, kbt, pas))
+
+    def test_tennis_cross_namespace_pair_resolves_by_ask_equality(self):
+        # Tennis emits normalize_name() full names on both matcher-side team
+        # fields ("carlos alcaraz" / "novak djokovic"), which never equal the
+        # raw Poly participant abbrs in the slug's side list ("c. alcaraz" /
+        # "n. djokovic"). A join keyed on team-string equality misses every
+        # tennis (and basketball) pair — _resolve_opp_ask must fall back to
+        # matching the matched leg's ask value instead.
+        kbt = {"KXATPMATCH-26JUL05ALCDJO-ALC": {"ask": 0.30, "yes_bid": 0.28}}
+        pas = {"atp-alcaraz-djokovic-2026-07-05":
+               [("c. alcaraz", 0.34), ("n. djokovic", 0.68)]}
+        m = self._m(ticker="KXATPMATCH-26JUL05ALCDJO-ALC", team="carlos alcaraz",
+                    slug="atp-alcaraz-djokovic-2026-07-05",
+                    p_team="novak djokovic", p_ask=0.68)
+        self.assertIsNone(wm._ml_ghost_filter_reason(m, kbt, pas))
+
+
+class TestGhostStatsScope(unittest.TestCase):
+    def test_summary_event_carries_scope(self):
+        stats = wm.GhostFilterStats(scope="moneyline")
+        stats._last_summary_at = 0.0  # force emission window open
+        with patch("ws_manager.log_event") as mock_log:
+            stats.maybe_emit_summary()
+        self.assertEqual(mock_log.call_args[0][0]["scope"], "moneyline")
+
+
+class TestMoneylineGhostGate(unittest.TestCase):
+    """A would-be ML arb failing F1-F4 (or the F3 edge cap) must be flipped
+    to is_arb=False before _ml_tracker.process — no opened event, one
+    ghost_log record."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._ml_tracker = wm.OpportunityTracker()
+        wm._ml_ghost_stats = wm.GhostFilterStats(scope="moneyline")
+
+    def _run_check(self, matches, kalshi_markets, poly_markets):
+        with patch.object(wm, "GLOBAL_MATCHERS", [type("M", (), {
+                 "match": staticmethod(lambda k, p: matches)})()]), \
+             patch.object(wm._order_book, "as_kalshi_markets",
+                          lambda now: kalshi_markets), \
+             patch("ws_manager.log_event") as mock_log, \
+             patch("ws_manager._append_ghost_log") as mock_ghost:
+            wm._poly_ml_cache = (poly_markets, wm.utc_now())
+            wm.check_arb_moneyline(wm.utc_now())
+        return mock_log, mock_ghost
+
+    def _match(self, gap=1.5, **kw):
+        m = {"market_name": "X", "kalshi_ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE",
+             "kalshi_team": "cle", "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+             "polymarket_slug": "s", "polymarket_team": "cws",
+             "polymarket_ask": 0.645, "polymarket_taker_fee": 0.0134,
+             "total_cost": 0.945, "gap_cents": gap, "is_arb": True}
+        m.update(kw)
+        return m
+
+    def test_ghost_arb_suppressed_not_opened(self):
+        kalshi = [{"ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE", "title": "X",
+                   "ask": 0.29, "yes_bid": None, "taker_fee": 0.0144, "raw": {}}]
+        poly = [{"slug": "s", "team_abbr": "cws", "ask": 0.645, "taker_fee": 0.0134,
+                 "title": "X", "raw": {}}]
+        mock_log, mock_ghost = self._run_check([self._match()], kalshi, poly)
+        opened = [c for c in mock_log.call_args_list
+                  if c[0][0].get("event") == "opened"]
+        self.assertEqual(opened, [])            # one_sided (yes_bid None)
+        self.assertEqual(mock_ghost.call_count, 1)
+        self.assertEqual(mock_ghost.call_args[0][0]["scope"], "moneyline")
+
+    def test_fat_edge_suppressed_by_edge_cap(self):
+        # Soccer fixture: for a two-way pair, F2 makes gap>10c unreachable once
+        # the filter passes (mid agreement bounds the gap), so the only way to
+        # exercise the call-site edge cap is a three-way (soccer) match, where
+        # _ml_ghost_filter_reason skips the Poly complement/F2 checks by design.
+        kalshi = [{"ticker": "KXEPL-26AUG01ARSCHE-ARS", "title": "X",
+                   "ask": 0.29, "yes_bid": 0.28, "taker_fee": 0.0144, "raw": {}}]
+        poly = [{"slug": "s", "team_abbr": "che", "ask": 0.50, "taker_fee": 0.0125,
+                 "title": "X", "raw": {}}]
+        m = self._match(gap=12.0, kalshi_ticker="KXEPL-26AUG01ARSCHE-ARS",
+                        kalshi_team="ars", polymarket_team="che",
+                        polymarket_ask=0.50, total_cost=0.84)
+        _, mock_ghost = self._run_check([m], kalshi, poly)
+        self.assertEqual(mock_ghost.call_args[0][0]["reason"], "edge_cap")
+        self.assertFalse(m["is_arb"])
+
+
+class TestMlTrackerMarkOpened(unittest.TestCase):
+    def setUp(self):
+        self.tr = wm.OpportunityTracker()
+        self.m = {"market_name": "X", "kalshi_ticker": "T1", "kalshi_team": "a",
+                  "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+                  "polymarket_slug": "s1", "polymarket_team": "b",
+                  "polymarket_ask": 0.645, "polymarket_taker_fee": 0.0134,
+                  "total_cost": 0.945, "gap_cents": 1.5, "is_arb": True}
+
+    def test_mark_opened_returns_opened_event_once(self):
+        ev = self.tr.mark_opened(self.m, wm.utc_now(), wm.utc_now())
+        self.assertEqual(ev["event"], "opened")
+        self.assertTrue(self.tr.has_match(self.m))
+        self.assertIsNone(self.tr.mark_opened(self.m, wm.utc_now(), wm.utc_now()))
+
+    def test_process_updates_then_closes_marked_arb(self):
+        self.tr.mark_opened(self.m, wm.utc_now(), wm.utc_now())
+        evs = self.tr.process([self.m], wm.utc_now(), wm.utc_now(), False)
+        self.assertEqual([e["event"] for e in evs], ["updated"])
+        evs = self.tr.process([], wm.utc_now(), wm.utc_now(), False)
+        self.assertEqual([e["event"] for e in evs], ["closed"])
+
+
+class TestMlRestConfirm(unittest.TestCase):
+    def setUp(self):
+        wm._ml_tracker = wm.OpportunityTracker()
+        wm._ml_confirm_cooldown.clear()
+        self.m = {"market_name": "X", "kalshi_ticker": "T1", "kalshi_team": "a",
+                  "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+                  "polymarket_slug": "s1", "polymarket_team": "b",
+                  "polymarket_ask": 0.62, "polymarket_taker_fee": 0.0141,
+                  "total_cost": 0.9385, "gap_cents": 2.15, "is_arb": True}
+
+    def _confirm(self, rest_yes_ask):
+        import asyncio
+        resp = type("R", (), {
+            "raise_for_status": lambda self: None,
+            "json": lambda self: {"market": {"yes_ask_dollars": f"{rest_yes_ask:.4f}"}},
+        })()
+        with patch("ws_manager.requests.get", return_value=resp), \
+             patch("ws_manager.log_event") as mock_log:
+            asyncio.run(wm._ml_rest_confirm_and_open(
+                self.m, wm.utc_now(), wm.utc_now()))
+        return mock_log
+
+    def test_stale_ws_quote_rejected_by_rest(self):
+        # The 2026-07-05 incident: WS said 0.29, real book said 0.36
+        mock_log = self._confirm(rest_yes_ask=0.36)
+        events = [c[0][0]["event"] for c in mock_log.call_args_list]
+        self.assertIn("ghost_rejected", events)
+        self.assertNotIn("opened", events)
+        self.assertFalse(wm._ml_tracker.has_match(self.m))
+
+    def test_live_quote_confirms_and_opens_with_rest_price(self):
+        mock_log = self._confirm(rest_yes_ask=0.29)
+        opened = [c[0][0] for c in mock_log.call_args_list
+                  if c[0][0]["event"] == "opened"]
+        self.assertEqual(len(opened), 1)
+        self.assertEqual(opened[0]["kalshi_ask"], 0.29)
+        self.assertTrue(wm._ml_tracker.has_match(self.m))
+
+    def test_threshold_not_met_after_rest_carries_ws_total(self):
+        mock_log = self._confirm(rest_yes_ask=0.36)
+        rejected = [c[0][0] for c in mock_log.call_args_list
+                    if c[0][0]["event"] == "ghost_rejected"]
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0]["reason"], "threshold_not_met_after_rest")
+        self.assertEqual(rejected[0]["ws_total"], round(self.m["total_cost"], 4))
+
+    def test_rest_fetch_exception_logs_rest_error(self):
+        import asyncio
+        with patch("ws_manager.requests.get", side_effect=Exception("boom")), \
+             patch("ws_manager.log_event") as mock_log:
+            asyncio.run(wm._ml_rest_confirm_and_open(
+                self.m, wm.utc_now(), wm.utc_now()))
+        rejected = [c[0][0] for c in mock_log.call_args_list
+                    if c[0][0]["event"] == "ghost_rejected"]
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0]["reason"], "rest_error")
+        self.assertEqual(rejected[0]["scope"], "moneyline")
+        self.assertEqual(rejected[0]["kalshi_ticker"], "T1")
+        self.assertEqual(rejected[0]["error"], "boom")
+        self.assertFalse(wm._ml_tracker.has_match(self.m))
+
+
+class TestMlConfirmGateNoEventLoop(unittest.TestCase):
+    """check_arb_moneyline called synchronously with NO running event loop
+    (startup seed path) must skip the confirm gate without ever constructing
+    the coroutine object — else `create_task(coro)` evaluates the coroutine
+    call first, the RuntimeError leaves it unawaited, and every cold-start
+    tick with a new arb candidate spews `RuntimeWarning: coroutine ... was
+    never awaited` on stderr."""
+
+    def setUp(self):
+        wm._order_book = KalshiOrderBook()
+        wm._ml_tracker = wm.OpportunityTracker()
+        wm._ml_ghost_stats = wm.GhostFilterStats(scope="moneyline")
+        wm._ml_confirm_cooldown.clear()
+
+    def test_no_loop_skips_gate_without_building_coroutine(self):
+        # Healthy two-way fixture that passes F1-F4 and the edge cap:
+        # mid_k 0.285; poly yes_bid = 1 - 0.40 = 0.60, mid_p 0.61,
+        # 1 - mid_p = 0.39, |0.285 - 0.39| = 0.105 <= 0.15; spreads 0.01/0.02.
+        kalshi = [{"ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE", "title": "X",
+                   "ask": 0.29, "yes_bid": 0.28, "taker_fee": 0.0144, "raw": {}}]
+        poly = [{"slug": "s", "team_abbr": "cws", "ask": 0.62, "taker_fee": 0.0141,
+                 "title": "X", "raw": {}},
+                {"slug": "s", "team_abbr": "cle", "ask": 0.40, "taker_fee": 0.0144,
+                 "title": "X", "raw": {}}]
+        m = {"market_name": "X", "kalshi_ticker": "KXMLBGAME-26JUL051400CWSCLE-CLE",
+             "kalshi_team": "cle", "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+             "polymarket_slug": "s", "polymarket_team": "cws",
+             "polymarket_ask": 0.62, "polymarket_taker_fee": 0.0141,
+             "total_cost": 0.9385, "gap_cents": 2.15, "is_arb": True}
+        with patch.object(wm, "GLOBAL_MATCHERS", [type("M", (), {
+                 "match": staticmethod(lambda k, p: [m])})()]), \
+             patch.object(wm._order_book, "as_kalshi_markets",
+                          lambda now: kalshi), \
+             patch("ws_manager.log_event") as mock_log, \
+             patch("ws_manager._append_ghost_log"), \
+             patch("ws_manager._ml_rest_confirm_and_open") as mock_gate:
+            wm._poly_ml_cache = (poly, wm.utc_now())
+            wm.check_arb_moneyline(wm.utc_now())
+        # No running loop: the coroutine function must never be invoked —
+        # a constructed-but-unscheduled coroutine leaks a RuntimeWarning.
+        mock_gate.assert_not_called()
+        opened = [c for c in mock_log.call_args_list
+                  if c[0][0].get("event") == "opened"]
+        self.assertEqual(opened, [])
 
 
 if __name__ == "__main__":

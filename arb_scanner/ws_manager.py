@@ -431,10 +431,13 @@ class KalshiOrderBook:
             updated = self._updated_at.get(ticker)
             if updated is None or updated < stale_cutoff:
                 continue
+            yes_levels = self._books.get(ticker, {}).get("yes", {})
+            yes_bid_c = max((p for p, q in yes_levels.items() if q > 0), default=None)
             result.append({
                 "ticker": ticker,
                 "title": meta["title"],
                 "ask": ask,
+                "yes_bid": yes_bid_c / 100.0 if yes_bid_c is not None else None,
                 "taker_fee": round(kalshi_taker_fee(ask), 6),
                 "raw": meta["raw"],
             })
@@ -581,6 +584,26 @@ class OpportunityTracker:
     def _make_key(self, m: dict) -> tuple:
         return (m["kalshi_ticker"], m["polymarket_slug"])
 
+    def has_match(self, m: dict) -> bool:
+        return self._make_key(m) in self._open
+
+    def mark_opened(self, m: dict, kalshi_fetched_at: str,
+                    polymarket_fetched_at: str) -> Optional[dict]:
+        """Insert a REST-confirmed arb as open. Returns the opened event, or
+        None when a concurrent tick already opened the key (caller skips)."""
+        key = self._make_key(m)
+        if key in self._open:
+            return None
+        now = utc_now()
+        opp_id = str(uuid.uuid4())
+        self._open[key] = {"opportunity_id": opp_id, "opened_at": now,
+                           "last_seen": now, "last_match": m}
+        return self._build_event(
+            "opened", opp_id, m, now,
+            kalshi_fetched_at, polymarket_fetched_at,
+            False, duration_seconds=None,
+        )
+
     def process(
         self,
         matches: list[dict],
@@ -715,6 +738,88 @@ def _ghost_filter_reason(kp: dict, pp: dict) -> Optional[str]:
     return None
 
 
+# Soccer games carry draw probability mass, so the two Poly team asks do NOT
+# sum to ~1 and yes_bid = 1 - opp_ask is invalid — Poly leg gets F1 only.
+_THREE_WAY_SERIES = {"KXEPL", "KXMLS", "KXCHAMPIONS"}
+
+
+def _resolve_opp_ask(sides: list[tuple[str, float]], m: dict) -> Optional[float]:
+    """Pick the opposite side's ask from a two-way slug's (team_abbr, ask)
+    pair. Matcher team names are normalized per-sport, so try raw-abbr
+    equality first, then fall back to ask equality against the matched leg
+    (both legs came from the same cache snapshot). Tied asks are the same
+    value either way."""
+    (t1, a1), (t2, a2) = sides
+    p_team = m.get("polymarket_team")
+    if t1 == p_team:
+        return a2
+    if t2 == p_team:
+        return a1
+    p_ask = m["polymarket_ask"]
+    if a1 == p_ask and a2 == p_ask:
+        return a1
+    if a1 == p_ask:
+        return a2
+    if a2 == p_ask:
+        return a1
+    return None
+
+
+def _ml_ghost_filter_reason(m: dict, kalshi_by_ticker: dict,
+                            poly_sides_by_slug: dict) -> Optional[str]:
+    """
+    F1/F2/F4 for a moneyline match dict. ML legs are opposite teams —
+    Kalshi leg is m["kalshi_team"], Poly leg is m["polymarket_team"] — so
+    mid agreement compares mid_k against 1 - mid_p. F3 (edge cap) stays at
+    the call site, same split as match_props. Two-way markets need the
+    opposite Poly side's ask to derive a yes_bid; matcher team strings are
+    normalized per-sport (tennis/basketball) so they can't be joined against
+    the raw Poly team_abbr — instead a slug's two sides are resolved via
+    _resolve_opp_ask. A slug without exactly two sides is one_sided.
+    """
+    km = kalshi_by_ticker.get(m["kalshi_ticker"])
+    if km is None:
+        return "one_sided"
+    k_yes_ask, k_yes_bid = km["ask"], km.get("yes_bid")
+    pin_ask = round(1.0 - GHOST_PIN_PROB, 4)
+    # F1 — either leg priced as effectively resolved
+    if k_yes_bid is not None and k_yes_bid >= GHOST_PIN_PROB:
+        return "pinned"
+    if k_yes_ask <= pin_ask:
+        return "pinned"
+    p_yes_ask = m["polymarket_ask"]
+    if p_yes_ask <= pin_ask:
+        return "pinned"
+    three_way = m["kalshi_ticker"].split("-")[0] in _THREE_WAY_SERIES
+    p_yes_bid = None
+    if not three_way:
+        sides = poly_sides_by_slug.get(m["polymarket_slug"], [])
+        if len(sides) != 2:
+            return "one_sided"
+        p_opp_ask = _resolve_opp_ask(sides, m)
+        if p_opp_ask is None:
+            return "one_sided"
+        p_yes_bid = round(1.0 - p_opp_ask, 4)
+        if p_yes_bid >= GHOST_PIN_PROB:
+            return "pinned"
+    if k_yes_bid is None:
+        return "one_sided"
+    # F4 — spread sanity (crossed or canyon-wide book)
+    k_spread = round(k_yes_ask - k_yes_bid, 4)
+    if k_spread < 0 or k_spread > GHOST_MAX_SPREAD:
+        return "spread"
+    if p_yes_bid is not None:
+        p_spread = round(p_yes_ask - p_yes_bid, 4)
+        if p_spread < 0 or p_spread > GHOST_MAX_SPREAD:
+            return "spread"
+        # F2 — opposite teams: compare mid_k to the complement of mid_p
+        mid_k = (k_yes_ask + k_yes_bid) / 2
+        mid_p = (p_yes_ask + p_yes_bid) / 2
+        if round(abs(mid_k - (1.0 - mid_p)), 4) > GHOST_MID_DISAGREEMENT_MAX:
+            return "mid_disagreement"
+    return None
+
+
 class GhostFilterStats:
     """
     Per-reason suppression counters + deduped ghost_log.jsonl writer + hourly
@@ -725,7 +830,8 @@ class GhostFilterStats:
 
     REASONS = ("pinned", "mid_disagreement", "edge_cap", "spread", "one_sided")
 
-    def __init__(self):
+    def __init__(self, scope: str = "props"):
+        self.scope = scope
         self.totals = {r: 0 for r in self.REASONS}
         self._window = {r: 0 for r in self.REASONS}
         self._last_summary_at = time.time()
@@ -750,6 +856,7 @@ class GhostFilterStats:
         log_event({
             "event": "ghost_filter_summary",
             "timestamp": utc_now(),
+            "scope": self.scope,
             "window_seconds": window_seconds,
             "suppressed": dict(self._window),
             "totals": dict(self.totals),
@@ -767,6 +874,7 @@ class GhostFilterStats:
 
 
 _ghost_stats = GhostFilterStats()
+_ml_ghost_stats = GhostFilterStats(scope="moneyline")
 
 
 def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
@@ -993,6 +1101,78 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
             "poly_ws_yes_ask": arb.get("poly_ws_yes_ask"),
             "poly_ws_no_ask": arb.get("poly_ws_no_ask"),
         })
+
+
+# keyed by (kalshi_ticker, polymarket_slug); epoch seconds of last attempt
+_ml_confirm_cooldown: dict[tuple, float] = {}
+
+
+async def _ml_rest_confirm_and_open(m: dict, kalshi_fetched_at: str,
+                                    polymarket_fetched_at: str) -> None:
+    """
+    Background task: REST-confirm a new moneyline arb candidate before the
+    tracker opens it (props parity). Must be spawned via asyncio.create_task,
+    never awaited inline from the WS handler.
+    """
+    ticker = m["kalshi_ticker"]
+    url = f"{KALSHI_BASE}/markets/{ticker}"
+    try:
+        loop = asyncio.get_running_loop()
+
+        def _fetch():
+            resp = requests.get(url, timeout=REST_TIMEOUT)
+            resp.raise_for_status()
+            return resp.json()
+
+        data = await loop.run_in_executor(None, _fetch)
+        market = data.get("market", data)
+        confirmed = _kalshi_ask(market, "yes")
+
+        def _reject(reason, **extra):
+            log_event({"event": "ghost_rejected", "timestamp": utc_now(),
+                       "scope": "moneyline", "reason": reason,
+                       "kalshi_ticker": ticker,
+                       "ws_kalshi_ask": m["kalshi_ask"],
+                       "rest_kalshi_ask": confirmed,
+                       "polymarket_ask": m["polymarket_ask"], **extra})
+
+        if confirmed is None:
+            _reject("no_quote_from_rest")
+            return
+        p_ask = m["polymarket_ask"]
+        total = (confirmed + kalshi_taker_fee(confirmed)
+                 + p_ask + polymarket_taker_fee(p_ask))
+        if total >= ARB_THRESHOLD:
+            _reject("threshold_not_met_after_rest", rest_total=round(total, 4),
+                    ws_total=round(m["total_cost"], 4))
+            return
+        gap = round((ARB_THRESHOLD - total) * 100, 2)
+        if gap > GHOST_MAX_GAP_CENTS:
+            _reject("edge_cap_after_rest", rest_total=round(total, 4),
+                    rest_gap_cents=gap)
+            return
+
+        cm = dict(m)
+        cm["kalshi_ask"] = confirmed
+        cm["kalshi_taker_fee"] = round(kalshi_taker_fee(confirmed), 6)
+        cm["total_cost"] = round(total, 6)
+        cm["gap_cents"] = gap
+        ev = _ml_tracker.mark_opened(cm, kalshi_fetched_at, polymarket_fetched_at)
+        if ev is None:
+            return  # concurrent tick won the race
+        log_event(ev)
+        print(f"\n[WS] ML ARB [REST-CONFIRMED] {cm['market_name']} — "
+              f"K {cm.get('kalshi_team')}={confirmed:.2f} + "
+              f"P {cm.get('polymarket_team')}={p_ask:.2f} "
+              f"= ${total:.3f} gap={gap:.1f}¢")
+    except Exception as e:
+        print(f"[WS] ML REST confirm failed for {ticker}: {e}", file=sys.stderr)
+        log_event({"event": "ghost_rejected", "timestamp": utc_now(),
+                   "scope": "moneyline", "reason": "rest_error",
+                   "kalshi_ticker": ticker,
+                   "ws_kalshi_ask": m["kalshi_ask"],
+                   "polymarket_ask": m["polymarket_ask"],
+                   "error": str(e)})
 
 
 class PropArbTracker:
@@ -1459,6 +1639,38 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
     for matcher in GLOBAL_MATCHERS:
         matches.extend(matcher.match(kalshi_markets, poly_markets))
 
+    # Ghost gate (F1/F2/F4 pair-level, F3 edge cap) — mirror of match_props.
+    # Suppressed matches flip to is_arb=False so open arbs still close.
+    kalshi_by_ticker = {km["ticker"]: km for km in kalshi_markets}
+    poly_sides_by_slug: dict[str, list[tuple[str, float]]] = {}
+    for pm in poly_markets:
+        poly_sides_by_slug.setdefault(pm["slug"], []).append(
+            (pm["team_abbr"], pm["ask"]))
+    for m in matches:
+        if not m["is_arb"]:
+            continue
+        reason = _ml_ghost_filter_reason(m, kalshi_by_ticker, poly_sides_by_slug)
+        if reason is None and m["gap_cents"] > GHOST_MAX_GAP_CENTS:
+            reason = "edge_cap"
+        if reason is not None:
+            m["is_arb"] = False
+            _ml_ghost_stats.record(reason, {
+                "event": "ghost_suppressed",
+                "timestamp": utc_now(),
+                "scope": "moneyline",
+                "reason": reason,
+                "direction": "Kalshi YES + Poly YES",
+                "kalshi_ticker": m["kalshi_ticker"],
+                "market_name": m["market_name"],
+                "kalshi_team": m.get("kalshi_team"),
+                "polymarket_team": m.get("polymarket_team"),
+                "kalshi_ask": m["kalshi_ask"],
+                "polymarket_ask": m["polymarket_ask"],
+                "total_cost": m["total_cost"],
+                "gap_cents": m["gap_cents"],
+            })
+    _ml_ghost_stats.maybe_emit_summary()
+
     try:
         skew = abs((datetime.fromisoformat(kalshi_updated_at) -
                     datetime.fromisoformat(poly_fetched_at)).total_seconds())
@@ -1466,7 +1678,26 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
     except Exception:
         skew_warn = False
 
-    events = _ml_tracker.process(matches, kalshi_updated_at, poly_fetched_at, skew_warn)
+    # New arbs must pass the REST confirm gate before the tracker opens them;
+    # already-open keys flow through process() for updated/closed as before.
+    tracker_input = []
+    now_epoch = time.time()
+    for m in matches:
+        if m["is_arb"] and not _ml_tracker.has_match(m):
+            key = (m["kalshi_ticker"], m["polymarket_slug"])
+            if now_epoch - _ml_confirm_cooldown.get(key, 0.0) >= _KALSHI_CONFIRM_COOLDOWN_SECONDS:
+                _ml_confirm_cooldown[key] = now_epoch
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    pass  # no running loop (startup seed path) — retried after cooldown expiry
+                else:
+                    loop.create_task(_ml_rest_confirm_and_open(
+                        m, kalshi_updated_at, poly_fetched_at))
+            continue
+        tracker_input.append(m)
+    events = _ml_tracker.process(tracker_input, kalshi_updated_at,
+                                 poly_fetched_at, skew_warn)
     for ev in events:
         log_event(ev)
 

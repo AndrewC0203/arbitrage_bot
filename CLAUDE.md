@@ -58,7 +58,7 @@ is_arb  = total_cost < ARB_THRESHOLD (0.96)
 
 Sources: [kalshi.com/fee-schedule](https://kalshi.com/fee-schedule) (taker θ=0.07), [docs.polymarket.us/fees.md](https://docs.polymarket.us/fees.md) (taker θ=0.06).
 
-1. **Moneyline**: Kalshi YES (team A) + Polymarket YES (team B). Arb when `total_cost < 0.96`.
+1. **Moneyline**: Kalshi YES (team A) + Polymarket YES (team B). Arb when `total_cost < 0.96`. Would-be ML arbs must pass the same Layer-1 ghost filters as props (F1 pinned, F2 mid agreement vs the complement leg, F3 edge cap, F4 spread — soccer's Poly leg is F1-only because of draw mass) AND a Kalshi REST confirm before the tracker opens them. Suppressions go to `ghost_log.jsonl` with `scope: "moneyline"`; hourly `ghost_filter_summary` events are emitted per scope.
 2. **Props**: Match by `(smt, player_norm, line, game_date)`. YES one side + NO other; same formula. Would-be prop arbs must then pass the Layer-1 ghost filters (F1 pinned, F2 mid agreement, F3 edge cap, F4 spread/two-sided) — suppressions go to `ghost_log.jsonl`, per-reason counts to hourly `ghost_filter_summary` events.
 
 ### Sports Configs
