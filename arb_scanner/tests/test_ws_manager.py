@@ -972,5 +972,44 @@ class TestMlTrackerMarkOpened(unittest.TestCase):
         self.assertEqual([e["event"] for e in evs], ["closed"])
 
 
+class TestMlRestConfirm(unittest.TestCase):
+    def setUp(self):
+        wm._ml_tracker = wm.OpportunityTracker()
+        wm._ml_confirm_cooldown.clear()
+        self.m = {"market_name": "X", "kalshi_ticker": "T1", "kalshi_team": "a",
+                  "kalshi_ask": 0.29, "kalshi_taker_fee": 0.0144,
+                  "polymarket_slug": "s1", "polymarket_team": "b",
+                  "polymarket_ask": 0.62, "polymarket_taker_fee": 0.0141,
+                  "total_cost": 0.9385, "gap_cents": 2.15, "is_arb": True}
+
+    def _confirm(self, rest_yes_ask):
+        import asyncio
+        resp = type("R", (), {
+            "raise_for_status": lambda self: None,
+            "json": lambda self: {"market": {"yes_ask_dollars": f"{rest_yes_ask:.4f}"}},
+        })()
+        with patch("ws_manager.requests.get", return_value=resp), \
+             patch("ws_manager.log_event") as mock_log:
+            asyncio.run(wm._ml_rest_confirm_and_open(
+                self.m, wm.utc_now(), wm.utc_now()))
+        return mock_log
+
+    def test_stale_ws_quote_rejected_by_rest(self):
+        # The 2026-07-05 incident: WS said 0.29, real book said 0.36
+        mock_log = self._confirm(rest_yes_ask=0.36)
+        events = [c[0][0]["event"] for c in mock_log.call_args_list]
+        self.assertIn("ghost_rejected", events)
+        self.assertNotIn("opened", events)
+        self.assertFalse(wm._ml_tracker.has_match(self.m))
+
+    def test_live_quote_confirms_and_opens_with_rest_price(self):
+        mock_log = self._confirm(rest_yes_ask=0.29)
+        opened = [c[0][0] for c in mock_log.call_args_list
+                  if c[0][0]["event"] == "opened"]
+        self.assertEqual(len(opened), 1)
+        self.assertEqual(opened[0]["kalshi_ask"], 0.29)
+        self.assertTrue(wm._ml_tracker.has_match(self.m))
+
+
 if __name__ == "__main__":
     unittest.main()

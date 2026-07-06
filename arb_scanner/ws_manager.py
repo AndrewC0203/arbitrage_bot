@@ -1074,6 +1074,71 @@ async def _rest_confirm_and_emit(arb: dict, timestamp: str) -> None:
         })
 
 
+# keyed by (kalshi_ticker, polymarket_slug); epoch seconds of last attempt
+_ml_confirm_cooldown: dict[tuple, float] = {}
+
+
+async def _ml_rest_confirm_and_open(m: dict, kalshi_fetched_at: str,
+                                    polymarket_fetched_at: str) -> None:
+    """
+    Background task: REST-confirm a new moneyline arb candidate before the
+    tracker opens it (props parity). Must be spawned via asyncio.create_task,
+    never awaited inline from the WS handler.
+    """
+    ticker = m["kalshi_ticker"]
+    url = f"{KALSHI_BASE}/markets/{ticker}"
+    try:
+        loop = asyncio.get_running_loop()
+
+        def _fetch():
+            resp = requests.get(url, timeout=REST_TIMEOUT)
+            resp.raise_for_status()
+            return resp.json()
+
+        data = await loop.run_in_executor(None, _fetch)
+        market = data.get("market", data)
+        confirmed = _kalshi_ask(market, "yes")
+
+        def _reject(reason, **extra):
+            log_event({"event": "ghost_rejected", "timestamp": utc_now(),
+                       "scope": "moneyline", "reason": reason,
+                       "kalshi_ticker": ticker,
+                       "ws_kalshi_ask": m["kalshi_ask"],
+                       "rest_kalshi_ask": confirmed,
+                       "polymarket_ask": m["polymarket_ask"], **extra})
+
+        if confirmed is None:
+            _reject("no_quote_from_rest")
+            return
+        p_ask = m["polymarket_ask"]
+        total = (confirmed + kalshi_taker_fee(confirmed)
+                 + p_ask + polymarket_taker_fee(p_ask))
+        if total >= ARB_THRESHOLD:
+            _reject("threshold_not_met_after_rest", rest_total=round(total, 4))
+            return
+        gap = round((ARB_THRESHOLD - total) * 100, 2)
+        if gap > GHOST_MAX_GAP_CENTS:
+            _reject("edge_cap_after_rest", rest_total=round(total, 4),
+                    rest_gap_cents=gap)
+            return
+
+        cm = dict(m)
+        cm["kalshi_ask"] = confirmed
+        cm["kalshi_taker_fee"] = round(kalshi_taker_fee(confirmed), 6)
+        cm["total_cost"] = round(total, 6)
+        cm["gap_cents"] = gap
+        ev = _ml_tracker.mark_opened(cm, kalshi_fetched_at, polymarket_fetched_at)
+        if ev is None:
+            return  # concurrent tick won the race
+        log_event(ev)
+        print(f"\n[WS] ML ARB [REST-CONFIRMED] {cm['market_name']} — "
+              f"K {cm.get('kalshi_team')}={confirmed:.2f} + "
+              f"P {cm.get('polymarket_team')}={p_ask:.2f} "
+              f"= ${total:.3f} gap={gap:.1f}¢")
+    except Exception as e:
+        print(f"[WS] ML REST confirm failed for {ticker}: {e}", file=sys.stderr)
+
+
 class PropArbTracker:
     """
     Tracks open prop arbs across emit calls.
@@ -1575,7 +1640,24 @@ def check_arb_moneyline(kalshi_updated_at: str) -> None:
     except Exception:
         skew_warn = False
 
-    events = _ml_tracker.process(matches, kalshi_updated_at, poly_fetched_at, skew_warn)
+    # New arbs must pass the REST confirm gate before the tracker opens them;
+    # already-open keys flow through process() for updated/closed as before.
+    tracker_input = []
+    now_epoch = time.time()
+    for m in matches:
+        if m["is_arb"] and not _ml_tracker.has_match(m):
+            key = (m["kalshi_ticker"], m["polymarket_slug"])
+            if now_epoch - _ml_confirm_cooldown.get(key, 0.0) >= _KALSHI_CONFIRM_COOLDOWN_SECONDS:
+                _ml_confirm_cooldown[key] = now_epoch
+                try:
+                    asyncio.create_task(_ml_rest_confirm_and_open(
+                        m, kalshi_updated_at, poly_fetched_at))
+                except RuntimeError:
+                    pass  # no running loop (startup seed path) — retried next check
+            continue
+        tracker_input.append(m)
+    events = _ml_tracker.process(tracker_input, kalshi_updated_at,
+                                 poly_fetched_at, skew_warn)
     for ev in events:
         log_event(ev)
 
