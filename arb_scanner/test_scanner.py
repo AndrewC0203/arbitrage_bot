@@ -1357,5 +1357,370 @@ class TestPolyDeltaSubscribeLoop(unittest.TestCase):
         assert ws.sent == []
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DOMAIN 8 — WNBA spread/total threshold markets (coverage matching)
+# Design: docs/superpowers/specs/2026-07-09-wnba-spread-total-design.md
+# ══════════════════════════════════════════════════════════════════════════════
+
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from matchers import basketball as bball
+
+_ET_TZ = ZoneInfo("America/New_York")
+
+# Kalshi WNBA tickers are date-only (26JUL09INDPHX — no HHMM segment).
+# Anchor: midnight ET on game day, converted to UTC.
+_WNBA_GAME_DT_UTC = datetime(2026, 7, 9, 0, 0, tzinfo=_ET_TZ).astimezone(timezone.utc)
+# Poly start: 10 PM ET on Jul 9 = 02:00 UTC Jul 10 — same ET date, next UTC date.
+_WNBA_POLY_START = "2026-07-10T02:00:00Z"
+
+
+def _kp_threshold(series, ticker, identity, label, line, yes_ask, no_ask):
+    return {
+        "series": series,
+        "ticker": ticker,
+        "player_name": label,
+        "player_norm": identity,
+        "line": line,
+        "game_dt_utc": _WNBA_GAME_DT_UTC,
+        "yes_ask": yes_ask,
+        "no_ask": no_ask,
+        "yes_ask_qty": 10.0,
+        "no_ask_qty": 10.0,
+    }
+
+
+def _pp_threshold(smt, identity, label, line, yes_ask, no_ask,
+                  yes_is_over=True, game_start=_WNBA_POLY_START, slug="poly-slug"):
+    return {
+        "slug": slug,
+        "smt": smt,
+        "player_name": label,
+        "player_norm": identity,
+        "line": line,
+        "yes_ask": yes_ask,
+        "no_ask": no_ask,
+        "yes_is_over": yes_is_over,
+        "game_start": game_start,
+        "event_title": "Indiana vs. Phoenix",
+    }
+
+
+_TOTAL_SMT = "basketball_team_full_game_total"
+_SPREAD_SMT = "basketball_team_full_game_spread"
+
+
+def _cost(a1, a2):
+    """Fee-inclusive pair cost, mirroring match_props arithmetic (rule 22)."""
+    return a1 + polymarket_taker_fee(a1) + a2 + kalshi_taker_fee(a2)
+
+
+class TestWnbaTeamCode(unittest.TestCase):
+    """Poly WNBA abbreviations and Kalshi title names must resolve to the SAME
+    canonical code — rule 23 forbids exact raw-string joins."""
+
+    # (poly_abbr, kalshi_title_name) pairs for all 13 current WNBA teams
+    PAIRS = [
+        ("sea", "Seattle"), ("atl", "Atlanta"), ("ind", "Indiana"),
+        ("phx", "Phoenix"), ("lv", "Las Vegas"), ("por", "Portland"),
+        ("gsv", "Golden State"), ("conn", "Connecticut"), ("dal", "Dallas"),
+        ("tor", "Toronto"), ("chi", "Chicago"), ("la", "Los Angeles"),
+        ("ny", "New York"), ("min", "Minnesota"), ("wsh", "Washington"),
+    ]
+
+    def test_W01_all_poly_abbrs_resolve(self):
+        for abbr, _ in self.PAIRS:
+            self.assertIsNotNone(bball.wnba_team_code(abbr), f"abbr {abbr!r}")
+
+    def test_W02_abbr_and_title_name_agree(self):
+        for abbr, name in self.PAIRS:
+            self.assertEqual(
+                bball.wnba_team_code(abbr), bball.wnba_team_code(name),
+                f"{abbr!r} vs {name!r}",
+            )
+
+    def test_W03_golden_state_is_valkyries_not_warriors(self):
+        self.assertEqual(bball.wnba_team_code("Golden State"), "lav")
+
+    def test_W04_new_york_is_liberty_not_knicks(self):
+        self.assertEqual(bball.wnba_team_code("New York"), "nyl")
+
+    def test_W05_unknown_team_returns_none(self):
+        self.assertIsNone(bball.wnba_team_code("zz"))
+
+
+class TestParseKalshiThreshold(unittest.TestCase):
+    """_parse_kalshi_threshold: identity/line from floor_strike + title."""
+
+    def test_K01_total_market(self):
+        import ws_manager as wm
+        parsed = wm._parse_kalshi_threshold("KXWNBATOTAL", {
+            "ticker": "KXWNBATOTAL-26JUL09INDPHX-187",
+            "title": "Indiana vs Phoenix",
+            "floor_strike": 186.5,
+            "strike_type": "greater",
+        })
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["player_norm"], "total:ind-phx")
+        self.assertEqual(parsed["line"], 186.5)
+
+    def test_K02_total_identity_is_order_independent(self):
+        import ws_manager as wm
+        a = wm._parse_kalshi_threshold("KXWNBATOTAL", {
+            "title": "Phoenix vs Indiana", "floor_strike": 186.5})
+        self.assertEqual(a["player_norm"], "total:ind-phx")
+
+    def test_K03_spread_market(self):
+        import ws_manager as wm
+        parsed = wm._parse_kalshi_threshold("KXWNBASPREAD", {
+            "ticker": "KXWNBASPREAD-26JUL09INDPHX-PHX7",
+            "title": "Phoenix wins by over 6.5 points",
+            "floor_strike": 6.5,
+            "strike_type": "greater",
+        })
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed["player_norm"], "spread:phx")
+        self.assertEqual(parsed["line"], 6.5)
+
+    def test_K04_missing_floor_strike_skipped(self):
+        import ws_manager as wm
+        self.assertIsNone(wm._parse_kalshi_threshold("KXWNBATOTAL", {
+            "title": "Indiana vs Phoenix"}))
+
+    def test_K05_unresolvable_team_skipped(self):
+        import ws_manager as wm
+        self.assertIsNone(wm._parse_kalshi_threshold("KXWNBASPREAD", {
+            "title": "Springfield wins by over 6.5 points", "floor_strike": 6.5}))
+
+    def test_K06_date_only_ticker_anchor(self):
+        dt = bball._kalshi_game_date_only_utc("KXWNBATOTAL-26JUL09INDPHX-187")
+        self.assertEqual(dt, _WNBA_GAME_DT_UTC)
+
+
+class TestParsePolyTeamProp(unittest.TestCase):
+    """_parse_poly_team_prop_market: live /v2/leagues/wnba/events shapes."""
+
+    def _parse(self, event_title, market):
+        import ws_manager as wm
+        now = datetime.now(timezone.utc)
+        return wm._parse_poly_team_prop_market(event_title, market, now)
+
+    def test_P01_total_market(self):
+        e = self._parse("Indiana vs. Phoenix", {
+            "slug": "tsc-wnba-ind-phx-2026-07-09-161pt5",
+            "sportsMarketType": _TOTAL_SMT,
+            "line": 161.5,
+            "title": "Over 161.5 total points",
+            "gameStartTime": _WNBA_POLY_START,
+            "marketSides": [
+                {"long": True, "quote": {"value": "0.7800"}},
+                {"long": False, "quote": {"value": "0.27"}},
+            ],
+        })
+        self.assertIsNotNone(e)
+        self.assertEqual(e["player_norm"], "total:ind-phx")
+        self.assertEqual(e["line"], 161.5)
+        self.assertTrue(e["yes_is_over"])
+        self.assertEqual(e["yes_ask"], 0.78)
+        self.assertEqual(e["no_ask"], 0.27)
+
+    def test_P02_spread_positive_line_cover_is_short_side(self):
+        # "Phoenix wins by over 10.5" — cover team phx sits on the long=False
+        # side, so the market's native YES (long) is the UNDER of the cover frame.
+        e = self._parse("Indiana vs. Phoenix", {
+            "slug": "asc-wnba-ind-phx-2026-07-09-pos-10pt5",
+            "sportsMarketType": _SPREAD_SMT,
+            "line": 10.5,
+            "title": "Phoenix wins by over 10.5 points",
+            "gameStartTime": _WNBA_POLY_START,
+            "marketSides": [
+                {"team": {"abbreviation": "ind"}, "long": True, "quote": {"value": "0.8000"}},
+                {"team": {"abbreviation": "phx"}, "long": False, "quote": {"value": "0.22"}},
+            ],
+        })
+        self.assertIsNotNone(e)
+        self.assertEqual(e["player_norm"], "spread:phx")
+        self.assertEqual(e["line"], 10.5)
+        self.assertFalse(e["yes_is_over"])
+        self.assertEqual(e["yes_ask"], 0.80)
+        self.assertEqual(e["no_ask"], 0.22)
+
+    def test_P03_spread_negative_line_cover_is_long_side(self):
+        e = self._parse("Indiana vs. Phoenix", {
+            "slug": "asc-wnba-ind-phx-2026-07-09-neg-1pt5",
+            "sportsMarketType": _SPREAD_SMT,
+            "line": -1.5,
+            "title": "Indiana wins by over 1.5 points",
+            "gameStartTime": _WNBA_POLY_START,
+            "marketSides": [
+                {"team": {"abbreviation": "ind"}, "long": True, "quote": {"value": "0.47"}},
+                {"team": {"abbreviation": "phx"}, "long": False, "quote": {"value": "0.55"}},
+            ],
+        })
+        self.assertIsNotNone(e)
+        self.assertEqual(e["player_norm"], "spread:ind")
+        self.assertEqual(e["line"], 1.5)
+        self.assertTrue(e["yes_is_over"])
+
+    def test_P04_unparseable_title_skipped(self):
+        e = self._parse("Indiana vs. Phoenix", {
+            "slug": "x", "sportsMarketType": _SPREAD_SMT, "line": 10.5,
+            "title": "Alternate spread special",
+            "gameStartTime": _WNBA_POLY_START,
+            "marketSides": [],
+        })
+        self.assertIsNone(e)
+
+
+class TestThresholdCoverageMatching(unittest.TestCase):
+    """Coverage matching: opposite sides at unequal lines, gap-free direction only.
+
+    Kalshi over(k) YES + Poly under(p) is covered iff p >= k;
+    Poly over(p) YES + Kalshi under(k) NO is covered iff p <= k.
+    All price fixtures validated against fees.py and F1/F2/F4 (rule 22).
+    Note: F3 (edge cap) is unreachable for threshold pairs while F2 passes —
+    a <=0.15 mid gap bounds the fee-inclusive edge below 10 cents — so there
+    is deliberately no F3 fixture here.
+    """
+
+    def _match(self, kalshi_props, poly_props):
+        import ws_manager as wm
+        with patch.object(wm, "_append_ghost_log"):
+            return wm.match_props(kalshi_props, poly_props)
+
+    def test_T01_total_arb_at_lower_poly_line_kalshi_no_direction(self):
+        # Poly over(185.5) + Kalshi NO under(186.5): p <= k, covered (both win at 186).
+        kp = _kp_threshold("KXWNBATOTAL", "KXWNBATOTAL-26JUL09INDPHX-187",
+                           "total:ind-phx", "Indiana vs Phoenix", 186.5,
+                           yes_ask=0.52, no_ask=0.50)
+        pp = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                           185.5, yes_ask=0.40, no_ask=0.62)
+        matches = self._match([kp], [pp])
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertEqual(m["direction"], "Poly YES + Kalshi NO")
+        self.assertEqual(m["kalshi_line"], 186.5)
+        self.assertEqual(m["poly_line"], 185.5)
+        self.assertEqual(m["stat_type"], "total")
+        self.assertAlmostEqual(m["total_cost"], round(_cost(0.40, 0.50), 4))
+
+    def test_T02_gap_direction_suppressed_despite_price(self):
+        # Kalshi YES over(186.5) + Poly under(185.5) leaves T=186 losing both
+        # legs — must NOT match even though the cost beats ARB_THRESHOLD.
+        kp = _kp_threshold("KXWNBATOTAL", "KXWNBATOTAL-26JUL09INDPHX-187",
+                           "total:ind-phx", "Indiana vs Phoenix", 186.5,
+                           yes_ask=0.30, no_ask=0.72)
+        pp = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                           185.5, yes_ask=0.42, no_ask=0.60)
+        # sanity: the gapped direction would price as an arb if not gated
+        self.assertLess(_cost(0.60, 0.30), ARB_THRESHOLD)
+        self.assertEqual(self._match([kp], [pp]), [])
+
+    def test_T03_covered_kalshi_yes_direction_at_higher_poly_line(self):
+        # Kalshi YES over(186.5) + Poly under(188.5): p >= k, covered.
+        kp = _kp_threshold("KXWNBATOTAL", "KXWNBATOTAL-26JUL09INDPHX-187",
+                           "total:ind-phx", "Indiana vs Phoenix", 186.5,
+                           yes_ask=0.30, no_ask=0.72)
+        pp = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                           188.5, yes_ask=0.40, no_ask=0.62)
+        matches = self._match([kp], [pp])
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertEqual(m["direction"], "Kalshi YES + Poly NO")
+        self.assertEqual(m["poly_line"], 188.5)
+        self.assertAlmostEqual(m["total_cost"], round(
+            0.30 + kalshi_taker_fee(0.30) + 0.62 + polymarket_taker_fee(0.62), 4))
+
+    def test_T04_tightest_line_selected_not_cheapest(self):
+        # Two legal Poly lines for the Kalshi-NO direction; the tighter 185.5
+        # is chosen even though 179.5 is cheaper (irrationally cheap far lines
+        # are the stale-quote ghost class).
+        kp = _kp_threshold("KXWNBATOTAL", "KXWNBATOTAL-26JUL09INDPHX-187",
+                           "total:ind-phx", "Indiana vs Phoenix", 186.5,
+                           yes_ask=0.52, no_ask=0.50)
+        pp_near = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                                185.5, yes_ask=0.40, no_ask=0.62, slug="near")
+        pp_far = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                               179.5, yes_ask=0.38, no_ask=0.64, slug="far")
+        matches = self._match([kp], [pp_far, pp_near])
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["poly_line"], 185.5)
+        self.assertEqual(matches[0]["leg1_ask"], 0.40)
+
+    def test_T05_equal_lines_allow_both_directions(self):
+        # p == k satisfies both coverage inequalities (pure complement case).
+        kp = _kp_threshold("KXWNBASPREAD", "KXWNBASPREAD-26JUL09INDPHX-PHX2",
+                           "spread:phx", "Phoenix", 1.5,
+                           yes_ask=0.44, no_ask=0.58)
+        pp = _pp_threshold(_SPREAD_SMT, "spread:phx", "Phoenix", 1.5,
+                           yes_ask=0.42, no_ask=0.60, yes_is_over=False)
+        matches = self._match([kp], [pp])
+        directions = {m["direction"] for m in matches}
+        self.assertEqual(directions,
+                         {"Kalshi YES + Poly NO", "Poly YES + Kalshi NO"})
+
+    def test_T06_spread_frame_translation(self):
+        # Poly market stores native long/short prices; yes_is_over=False means
+        # the cover-frame under is the native yes_ask.
+        kp = _kp_threshold("KXWNBASPREAD", "KXWNBASPREAD-26JUL09INDPHX-PHX7",
+                           "spread:phx", "Phoenix", 6.5,
+                           yes_ask=0.38, no_ask=0.64)
+        pp = _pp_threshold(_SPREAD_SMT, "spread:phx", "Phoenix", 7.5,
+                           yes_ask=0.52, no_ask=0.50, yes_is_over=False)
+        matches = self._match([kp], [pp])
+        self.assertEqual(len(matches), 1)
+        m = matches[0]
+        self.assertEqual(m["direction"], "Kalshi YES + Poly NO")
+        self.assertEqual(m["leg2_ask"], 0.52)  # native yes_ask, translated to under
+        self.assertAlmostEqual(m["total_cost"], round(
+            0.38 + kalshi_taker_fee(0.38) + 0.52 + polymarket_taker_fee(0.52), 4))
+
+    def test_T07_different_et_date_no_match(self):
+        kp = _kp_threshold("KXWNBATOTAL", "KXWNBATOTAL-26JUL09INDPHX-187",
+                           "total:ind-phx", "Indiana vs Phoenix", 186.5,
+                           yes_ask=0.52, no_ask=0.50)
+        pp = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                           185.5, yes_ask=0.40, no_ask=0.62,
+                           game_start="2026-07-11T02:00:00Z")  # ET Jul 10
+        self.assertEqual(self._match([kp], [pp]), [])
+
+    def test_T08_different_identity_no_match(self):
+        kp = _kp_threshold("KXWNBATOTAL", "KXWNBATOTAL-26JUL09SEAATL-172",
+                           "total:atl-sea", "Seattle vs Atlanta", 171.5,
+                           yes_ask=0.52, no_ask=0.50)
+        pp = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                           170.5, yes_ask=0.40, no_ask=0.62)
+        self.assertEqual(self._match([kp], [pp]), [])
+
+    def test_T09_pinned_leg_suppressed(self):
+        kp = _kp_threshold("KXWNBATOTAL", "KXWNBATOTAL-26JUL09INDPHX-187",
+                           "total:ind-phx", "Indiana vs Phoenix", 186.5,
+                           yes_ask=0.52, no_ask=0.50)
+        pp = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                           185.5, yes_ask=0.02, no_ask=0.99)
+        self.assertEqual(self._match([kp], [pp]), [])
+
+    def test_T10_player_props_unaffected_by_threshold_entries(self):
+        kp_player = {
+            "series": "KXNBAPTS", "ticker": "KXNBAPTS-26JUL091900INDPHX-XX-20",
+            "player_name": "Jane Doe", "player_norm": "jane doe", "line": 20,
+            "game_dt_utc": datetime(2026, 7, 9, 23, 0, tzinfo=timezone.utc),
+            "yes_ask": 0.40, "no_ask": 0.62, "yes_ask_qty": 5.0, "no_ask_qty": 5.0,
+        }
+        pp_player = {
+            "slug": "pts-slug", "smt": "basketball_player_points",
+            "player_name": "Jane Doe", "player_norm": "jane doe", "line": 20,
+            "yes_ask": 0.42, "no_ask": 0.50,
+            "game_start": "2026-07-09T23:00:00Z", "event_title": "IND @ PHX",
+        }
+        pp_thresh = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
+                                  185.5, yes_ask=0.40, no_ask=0.62)
+        matches = self._match([kp_player], [pp_player, pp_thresh])
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["direction"], "Kalshi YES + Poly NO")
+        self.assertEqual(matches[0]["player_name"], "Jane Doe")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
