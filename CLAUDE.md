@@ -60,6 +60,7 @@ Sources: [kalshi.com/fee-schedule](https://kalshi.com/fee-schedule) (taker θ=0.
 
 1. **Moneyline**: Kalshi YES (team A) + Polymarket YES (team B). Arb when `total_cost < 0.96`. Would-be ML arbs must pass the same Layer-1 ghost filters as props (F1 pinned, F2 mid agreement vs the complement leg, F3 edge cap, F4 spread — soccer's Poly leg is F1-only because of draw mass) AND a Kalshi REST confirm before the tracker opens them. Suppressions go to `ghost_log.jsonl` with `scope: "moneyline"`; hourly `ghost_filter_summary` events are emitted per scope.
 2. **Props**: Match by `(smt, player_norm, line, game_date)`. YES one side + NO other; same formula. Would-be prop arbs must then pass the Layer-1 ghost filters (F1 pinned, F2 mid agreement, F3 edge cap, F4 spread/two-sided) — suppressions go to `ghost_log.jsonl`, per-reason counts to hourly `ghost_filter_summary` events.
+3. **WNBA spread/total** (KXWNBASPREAD/KXWNBATOTAL vs Poly `basketball_team_full_game_spread`/`_total`): the venues' line grids never align, so matching is **coverage-based** — Kalshi over(k) YES + Poly under(p) is legal iff `p ≥ k` (mirror direction iff `p ≤ k`), tightest legal Poly line per direction. Rides the props pipeline (identity in `player_norm`: `total:<a>-<b>` / `spread:<cover_code>`); Kalshi parses `floor_strike` (not the title regex), Poly seeds from `/v2/leagues/wnba/events` storing native long/short prices + a `yes_is_over` frame flag. Game identity = ET-date equality (WNBA tickers are date-only). Design: `docs/superpowers/specs/2026-07-09-wnba-spread-total-design.md`.
 
 ### Sports Configs
 
@@ -69,6 +70,7 @@ Sources: [kalshi.com/fee-schedule](https://kalshi.com/fee-schedule) (taker θ=0.
 | NBA    | KXNBA, KXWNBA, KXCBB      | nba, wnba, ncaab           | BasketballMatcher |
 | Soccer | KXEPL, KXMLS, KXCHAMPIONS | epl, mls, champions-league | SoccerMatcher     |
 | Tennis | KXATPMATCH, KXWTAMATCH    | atp, wta                   | TennisMatcher     |
+| WNBA spread/total | KXWNBASPREAD, KXWNBATOTAL | wnba (league events) | threshold pipeline (`match_props`) |
 
 ### Key Constants
 
@@ -94,7 +96,7 @@ Sources: [kalshi.com/fee-schedule](https://kalshi.com/fee-schedule) (taker θ=0.
 | Polymarket ML seed | `https://gateway.polymarket.us/v2/leagues/{sport}/events` | None                                                      |
 | Polymarket props   | `https://gateway.polymarket.us/v1/search?query=...`       | None                                                      |
 
-**Scope**: MLB/NBA/Soccer/Tennis moneyline + MLB/NBA props. No trade execution. `gamma-api` and `clob.polymarket.com` are out of scope (international, macro futures only).
+**Scope**: MLB/NBA/Soccer/Tennis moneyline + MLB/NBA props + WNBA spread/total. No trade execution. `gamma-api` and `clob.polymarket.com` are out of scope (international, macro futures only). Venue survey 2026-07-09: WNBA is the only additional sport with non-moneyline markets live on both venues — UFC is fight-winner-only on Poly US, golf/F1/NASCAR/boxing have no live Poly US events, esports/cricket are winner-only, and Poly US lists no WNBA player props.
 
 ```bash
 cd arb_scanner && pip install -r requirements.txt

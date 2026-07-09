@@ -53,7 +53,13 @@ from matchers.baseball import (
     _ALIASES,
     _ALIASES_SORTED,
 )
-from matchers.basketball import BasketballMatcher
+from matchers.basketball import (
+    BasketballMatcher,
+    wnba_team_code,
+    wnba_teams_from_kalshi_title,
+    _kalshi_game_date_only_utc,
+    _ET,
+)
 from matchers.soccer import SoccerMatcher
 from matchers.tennis import TennisMatcher
 from fees import kalshi_taker_fee, polymarket_taker_fee
@@ -134,7 +140,52 @@ SERIES_TO_SMT = {
     "KXNBAREB": "basketball_player_rebounds",
     "KXNBAAST": "basketball_player_assists",
     "KXNBA3PT": "basketball_player_threes",
+    # WNBA team threshold markets — matched by line coverage, not exact line
+    # (docs/superpowers/specs/2026-07-09-wnba-spread-total-design.md).
+    # Verified live 2026-07-09: Kalshi titles "Phoenix wins by over 6.5 points" /
+    # "Indiana vs Phoenix" with floor_strike; Poly SMTs in /v2/leagues/wnba/events.
+    "KXWNBASPREAD": "basketball_team_full_game_spread",
+    "KXWNBATOTAL":  "basketball_team_full_game_total",
 }
+
+# Series whose markets are threshold propositions over a game quantity (total
+# points / winning margin) rather than player stat lines. They take the
+# coverage-matching branch in match_props and field-based Kalshi parsing.
+THRESHOLD_SERIES = {"KXWNBASPREAD", "KXWNBATOTAL"}
+THRESHOLD_SMTS = {SERIES_TO_SMT[s] for s in THRESHOLD_SERIES}
+
+_SPREAD_TITLE_RE = re.compile(r"^(.+?) wins by over ([0-9.]+)")
+
+
+def _parse_kalshi_threshold(series: str, m: dict) -> Optional[dict]:
+    """Identity/line for a KXWNBASPREAD/KXWNBATOTAL market from floor_strike +
+    title. Returns {player_name, player_norm, line} (props-pipeline field
+    names: player_norm carries the threshold identity) or None to skip."""
+    strike = m.get("floor_strike")
+    if strike is None:
+        return None
+    title = m.get("title", "") or ""
+    if series == "KXWNBATOTAL":
+        teams = wnba_teams_from_kalshi_title(title)
+        if teams is None:
+            return None
+        a, b = sorted(teams)
+        return {
+            "player_name": title,
+            "player_norm": f"total:{a}-{b}",
+            "line": float(strike),
+        }
+    match = _SPREAD_TITLE_RE.match(title)
+    if match is None:
+        return None
+    cover = wnba_team_code(match.group(1))
+    if cover is None:
+        return None
+    return {
+        "player_name": match.group(1),
+        "player_norm": f"spread:{cover}",
+        "line": float(strike),
+    }
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -534,6 +585,7 @@ class KalshiPriceCache:
                     "player_norm": kp["player_norm"],
                     "line": kp["line"],
                     "game_dt_utc": kp["game_dt_utc"],
+                    "date_only": kp.get("date_only", False),
                     "yes_ask": kp["yes_ask"],
                     "no_ask": kp["no_ask"],
                     "updated_at": now,
@@ -557,14 +609,17 @@ class KalshiPriceCache:
     def as_props_list(self, now: datetime) -> list[dict]:
         # Skip props where the game started more than 4 hours ago — those markets
         # are mid-game/finished and WS prices lag REST, producing ghost arbs.
+        # date_only entries are anchored at midnight ET (WNBA tickers carry no
+        # start time), so their window spans the whole ET game day + 4h.
         stale_game_cutoff = now - timedelta(hours=4)
+        date_only_cutoff = now - timedelta(hours=28)
         # Skip entries whose price hasn't been refreshed recently — protects against
         # "seeded via REST once, WS ticker never arrived" ghost prices.
         stale_price_cutoff = now - timedelta(seconds=_CACHE_STALE_SECONDS)
         return [
             e for e in self._cache.values()
             if not (e["yes_ask"] is None and e["no_ask"] is None)
-            and e["game_dt_utc"] >= stale_game_cutoff
+            and e["game_dt_utc"] >= (date_only_cutoff if e.get("date_only") else stale_game_cutoff)
             and e.get("updated_at") is not None
             and e["updated_at"] >= stale_price_cutoff
         ]
@@ -884,11 +939,126 @@ _ghost_stats = GhostFilterStats()
 _ml_ghost_stats = GhostFilterStats(scope="moneyline")
 
 
+def _match_threshold_prop(kp: dict, smt: str, candidates: list[dict],
+                          matches: list[dict]) -> None:
+    """Coverage matching for one Kalshi threshold market (WNBA spread/total).
+
+    Kalshi YES over(k) + Poly under(p) pays >= $1 iff p >= k; the mirror
+    direction (Poly over(p) + Kalshi NO under(k)) iff p <= k. Only the
+    tightest legal Poly line per direction is considered — in a sane book it
+    is also the cheapest, and an irrationally cheap far line is the
+    stale-quote ghost class, not extra edge.
+    """
+    # Kalshi WNBA tickers are date-only (midnight-ET anchor), so game identity
+    # is ET-date equality, not the +/-30min window players props use.
+    k_date_et = kp["game_dt_utc"].astimezone(_ET).date()
+    k = float(kp["line"])
+    same_game = []
+    for cand in candidates:
+        try:
+            p_dt = datetime.fromisoformat(cand["game_start"].replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            continue
+        if p_dt.astimezone(_ET).date() == k_date_et:
+            same_game.append(cand)
+    if not same_game:
+        return
+
+    stat_type = "spread" if smt.endswith("spread") else "total"
+
+    def cover_frame(pp: dict) -> tuple[Optional[float], Optional[float]]:
+        if pp.get("yes_is_over", True):
+            return pp.get("yes_ask"), pp.get("no_ask")
+        return pp.get("no_ask"), pp.get("yes_ask")
+
+    for direction, legal, pick, kalshi_side, kalshi_qty_key in [
+        ("Kalshi YES + Poly NO", lambda l: l >= k, min, "yes_ask", "yes_ask_qty"),
+        ("Poly YES + Kalshi NO", lambda l: l <= k, max, "no_ask", "no_ask_qty"),
+    ]:
+        kalshi_ask = kp.get(kalshi_side)
+        if kalshi_ask is None:
+            continue
+        valid = [pp for pp in same_game if legal(float(pp["line"]))]
+        if not valid:
+            continue
+        pp = pick(valid, key=lambda p: float(p["line"]))
+        over_ask, under_ask = cover_frame(pp)
+        poly_ask = under_ask if direction == "Kalshi YES + Poly NO" else over_ask
+        if poly_ask is None:
+            continue
+        if direction == "Kalshi YES + Poly NO":
+            leg1_name, leg1_ask, leg1_fee_fn = "Kalshi YES", kalshi_ask, kalshi_taker_fee
+            leg2_name, leg2_ask, leg2_fee_fn = "Poly NO", poly_ask, polymarket_taker_fee
+        else:
+            leg1_name, leg1_ask, leg1_fee_fn = "Poly YES", poly_ask, polymarket_taker_fee
+            leg2_name, leg2_ask, leg2_fee_fn = "Kalshi NO", kalshi_ask, kalshi_taker_fee
+        total = leg1_ask + leg1_fee_fn(leg1_ask) + leg2_ask + leg2_fee_fn(leg2_ask)
+        if total >= ARB_THRESHOLD:
+            continue
+        gap_cents = round((ARB_THRESHOLD - total) * 100, 2)
+
+        # Same ghost gate as player props; the Poly leg is translated to the
+        # cover frame so F1/F2/F4 compare like-for-like propositions.
+        pp_cover = {"yes_ask": over_ask, "no_ask": under_ask}
+        reason = _ghost_filter_reason(kp, pp_cover)
+        if reason is None and gap_cents > GHOST_MAX_GAP_CENTS:
+            reason = "edge_cap"
+        if reason is not None:
+            _ghost_stats.record(reason, {
+                "event": "ghost_suppressed",
+                "timestamp": utc_now(),
+                "reason": reason,
+                "direction": direction,
+                "kalshi_ticker": kp["ticker"],
+                "player_name": pp["player_name"],
+                "stat_type": stat_type,
+                "line": kp["line"],
+                "poly_line": float(pp["line"]),
+                "game_start": pp["game_start"],
+                "kalshi_yes_ask": kp.get("yes_ask"),
+                "kalshi_no_ask": kp.get("no_ask"),
+                "poly_yes_ask": over_ask,
+                "poly_no_ask": under_ask,
+                "total_cost": round(total, 4),
+                "gap_cents": gap_cents,
+            })
+            continue
+
+        matches.append({
+            "direction": direction,
+            "event_title": pp["event_title"],
+            "game_start": pp["game_start"],
+            "player_name": pp["player_name"],
+            "stat_type": stat_type,
+            "line": kp["line"],
+            "kalshi_line": k,
+            "poly_line": float(pp["line"]),
+            "poly_slug": pp.get("slug"),
+            "leg1": leg1_name,
+            "leg1_ask": leg1_ask,
+            "leg2": leg2_name,
+            "leg2_ask": leg2_ask,
+            "total_cost": round(total, 4),
+            "gap_cents": gap_cents,
+            "kalshi_ticker": kp["ticker"],
+            "poly_smt": smt,
+            "poly_ws_yes_ask": pp.get("yes_ask"),
+            "poly_ws_no_ask": pp.get("no_ask"),
+            "kalshi_qty_at_best": kp.get(kalshi_qty_key),
+        })
+
+
 def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
     # Key on date only, keep all candidates per key: doubleheaders repeat the
     # same (player, line, date) — the right game is picked by start time below.
     poly_index: dict[tuple, list[dict]] = {}
+    # Threshold markets (WNBA spread/total) match across unequal lines, so
+    # they index by identity only; line selection happens per direction.
+    poly_threshold_index: dict[tuple, list[dict]] = {}
     for pp in poly_props:
+        if pp["smt"] in THRESHOLD_SMTS:
+            poly_threshold_index.setdefault((pp["smt"], pp["player_norm"]), []).append(pp)
+            continue
         game_date = pp["game_start"][:10]
         key = (pp["smt"], pp["player_norm"], pp["line"], game_date)
         poly_index.setdefault(key, []).append(pp)
@@ -896,6 +1066,13 @@ def match_props(kalshi_props: list[dict], poly_props: list[dict]) -> list[dict]:
     matches = []
     for kp in kalshi_props:
         smt = SERIES_TO_SMT[kp["series"]]
+        if smt in THRESHOLD_SMTS:
+            _match_threshold_prop(
+                kp, smt,
+                poly_threshold_index.get((smt, kp["player_norm"]), []),
+                matches,
+            )
+            continue
         game_date = kp["game_dt_utc"].strftime("%Y-%m-%d")
         key = (smt, kp["player_norm"], kp["line"], game_date)
         pp = None
@@ -1497,15 +1674,27 @@ def fetch_kalshi_props(today_utc: "datetime.date") -> tuple[list[dict], set]:
             print(f"[WARN] Kalshi {series} fetch failed: {exc}", file=sys.stderr)
             continue
         ok_series.add(series)
+        is_threshold = series in THRESHOLD_SERIES
         for m in markets:
             ticker = m.get("ticker", "")
-            game_dt = _kalshi_game_dt_utc(ticker)
+            # WNBA tickers are date-only (26JUL09INDPHX) — no HHMM to parse.
+            game_dt = (_kalshi_game_date_only_utc(ticker) if is_threshold
+                       else _kalshi_game_dt_utc(ticker))
             if game_dt is None or game_dt.date() not in valid_dates:
                 continue
-            parsed = _kalshi_parse_title(m.get("title", ""))
-            if parsed is None:
-                continue
-            player_name, line = parsed
+            if is_threshold:
+                parsed_t = _parse_kalshi_threshold(series, m)
+                if parsed_t is None:
+                    continue
+                player_name = parsed_t["player_name"]
+                player_norm = parsed_t["player_norm"]
+                line = parsed_t["line"]
+            else:
+                parsed = _kalshi_parse_title(m.get("title", ""))
+                if parsed is None:
+                    continue
+                player_name, line = parsed
+                player_norm = normalize_name(player_name)
             yes_ask = _kalshi_ask(m, "yes")
             no_ask  = _kalshi_ask(m, "no")
             if yes_ask is None and no_ask is None:
@@ -1514,11 +1703,14 @@ def fetch_kalshi_props(today_utc: "datetime.date") -> tuple[list[dict], set]:
                 "series": series,
                 "ticker": ticker,
                 "player_name": player_name,
-                "player_norm": normalize_name(player_name),
+                "player_norm": player_norm,
                 "line": line,
                 "yes_ask": yes_ask,
                 "no_ask": no_ask,
                 "game_dt_utc": game_dt,
+                # Midnight-ET anchor: staleness cutoffs must span the whole
+                # ET game day (28h window) instead of the usual 4h.
+                "date_only": is_threshold,
             })
     return results, ok_series
 
@@ -2152,6 +2344,133 @@ def _fetch_poly_props_events() -> list:
     return events
 
 
+def _parse_poly_team_prop_market(event_title: str, m: dict, now: datetime) -> Optional[dict]:
+    """Parse a Polymarket WNBA spread/total market (league-events payload) into
+    a props-map entry. Prices stay in the market's native long/short frame
+    (yes_ask = long side, matching what the WS handler writes); yes_is_over
+    records whether that frame's YES is the over/cover proposition."""
+    slug = m.get("slug", "")
+    if not slug:
+        return None
+    smt = m.get("sportsMarketType", "")
+    title = m.get("title", "") or ""
+    long_ask = short_ask = None
+    long_abbr = short_abbr = ""
+    for side in m.get("marketSides", []):
+        ask = _poly_ask(side)
+        abbr = (side.get("team") or {}).get("abbreviation", "") or side.get("participant", "")
+        if side.get("long") is True:
+            long_ask, long_abbr = ask, abbr
+        elif side.get("long") is False:
+            short_ask, short_abbr = ask, abbr
+
+    if smt == "basketball_team_full_game_total":
+        teams = wnba_teams_from_kalshi_title(event_title)
+        if teams is None or m.get("line") is None:
+            return None
+        a, b = sorted(teams)
+        identity = f"total:{a}-{b}"
+        line = float(m["line"])
+        label = event_title
+        yes_is_over = True  # long side of a total is Over (verified live 2026-07-09)
+    else:
+        # Spread title names the cover team and threshold: "Phoenix wins by over 10.5 points"
+        tm = _SPREAD_TITLE_RE.match(title)
+        if tm is None:
+            return None
+        cover = wnba_team_code(tm.group(1))
+        if cover is None:
+            return None
+        try:
+            line = float(tm.group(2))
+        except ValueError:
+            return None
+        identity = f"spread:{cover}"
+        label = tm.group(1)
+        if wnba_team_code(long_abbr) == cover:
+            yes_is_over = True
+        elif wnba_team_code(short_abbr) == cover:
+            yes_is_over = False
+        else:
+            return None
+
+    if long_ask is None and short_ask is None:
+        return None
+    return {
+        "slug": slug,
+        "smt": smt,
+        "player_name": label,
+        "player_norm": identity,
+        "line": line,
+        "game_start": m.get("gameStartTime", "") or "",
+        "event_title": event_title,
+        "yes_ask": long_ask,
+        "no_ask": short_ask,
+        "yes_is_over": yes_is_over,
+        "updated_at": now,
+    }
+
+
+# Leagues whose spread/total team markets feed the threshold pipeline.
+_TEAM_PROPS_LEAGUE_SLUGS = ["wnba"]
+
+
+async def _seed_wnba_team_props(session: aiohttp.ClientSession, now: datetime) -> list[str]:
+    """Fetch WNBA league events and merge spread/total markets into
+    _poly_ws_props_token_map (same eviction semantics as _update_poly_props_map:
+    REST is authoritative for markets present in the payload). Returns slugs."""
+    today = now.date()
+    # WNBA prime time is 02:00 UTC next day — tomorrow's UTC date is today's
+    # ET game day, so it must be accepted (unlike the player-props window).
+    valid_dates = {(today + timedelta(days=d)).isoformat() for d in (-1, 0, 1)}
+    slugs: list[str] = []
+    for league in _TEAM_PROPS_LEAGUE_SLUGS:
+        parsed: list[dict] = []
+        dead_slugs: list[str] = []
+        try:
+            async with session.get(
+                f"{POLYMARKET_US_GATEWAY}/v2/leagues/{league}/events",
+                params={"limit": 100},
+                timeout=REQUEST_TIMEOUT,
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+        except Exception as exc:
+            print(f"[POLY-WS] Team props seed error for {league}: {exc}", file=sys.stderr)
+            continue
+        for event in data.get("events", []):
+            for m in event.get("markets", []):
+                try:
+                    if m.get("sportsMarketType") not in THRESHOLD_SMTS:
+                        continue
+                    slug = m.get("slug", "")
+                    if not slug:
+                        continue
+                    game_start = m.get("gameStartTime", "") or ""
+                    dead = (
+                        not m.get("active") or m.get("closed") or m.get("archived")
+                        or game_start[:10] not in valid_dates
+                    )
+                    if dead:
+                        dead_slugs.append(slug)
+                        continue
+                    entry = _parse_poly_team_prop_market(event.get("title", ""), m, now)
+                    if entry is not None:
+                        parsed.append(entry)
+                except (TypeError, ValueError, KeyError):
+                    continue
+        async with _poly_ws_lock:
+            for slug in dead_slugs:
+                _poly_ws_props_token_map.pop(slug, None)
+            for entry in parsed:
+                slug = entry["slug"]
+                _poly_ws_props_token_map[slug] = _carry_ws_fresh_prices(
+                    _poly_ws_props_token_map.get(slug), entry, now
+                )
+                slugs.append(slug)
+    return slugs
+
+
 def _update_poly_props_map(events: list) -> list[str]:
     """
     Parse search events into _poly_ws_props_token_map. REST is authoritative:
@@ -2217,10 +2536,13 @@ def _update_poly_props_map(events: list) -> list[str]:
 
     # Purge entries that vanished from search results — eviction above only
     # covers markets still PRESENT in results, so old-date leftovers would
-    # otherwise accumulate for the process lifetime.
+    # otherwise accumulate for the process lifetime. Tomorrow (UTC) is kept:
+    # team-threshold entries legitimately carry next-UTC-day starts (evening
+    # ET games), and player props never enter the map with that date anyway.
+    purge_keep = valid_dates | {(today + timedelta(days=1)).isoformat()}
     for slug in [
         s for s, e in _poly_ws_props_token_map.items()
-        if (e.get("game_start") or "")[:10] not in valid_dates
+        if (e.get("game_start") or "")[:10] not in purge_keep
     ]:
         _poly_ws_props_token_map.pop(slug, None)
     return kept
@@ -2255,6 +2577,9 @@ async def _poly_ws_seed_from_rest(session: aiohttp.ClientSession) -> tuple[list[
             props_slugs = _update_poly_props_map(events)
     except Exception as exc:
         print(f"[POLY-WS] Props REST seed error: {exc}", file=sys.stderr)
+
+    # ── Team threshold markets (WNBA spread/total) ──
+    props_slugs.extend(await _seed_wnba_team_props(session, now))
 
     return ml_slugs, props_slugs
 
@@ -2366,13 +2691,17 @@ def _kalshi_props_from_book(now: datetime) -> list[dict]:
     metadata-validated-before-arb-check requirement. No _CACHE_STALE_SECONDS/
     updated_at filtering: book freshness is guaranteed by seq-gap reconnects."""
     stale_game_cutoff = now - timedelta(hours=4)
+    # Midnight-ET-anchored entries (date-only WNBA tickers) live 28h; see
+    # KalshiPriceCache.as_props_list.
+    date_only_cutoff = now - timedelta(hours=28)
     quotes = _order_book.prop_quotes()
     result = []
     for entry in _price_cache.metadata_entries():
         quote = quotes.get(entry["ticker"])
         if quote is None:
             continue
-        if entry["game_dt_utc"] < stale_game_cutoff:
+        cutoff = date_only_cutoff if entry.get("date_only") else stale_game_cutoff
+        if entry["game_dt_utc"] < cutoff:
             continue
         result.append({
             "series": entry["series"],
@@ -2417,6 +2746,7 @@ def _reconstruct_poly_props_list() -> list[dict]:
             "line": entry["line"],
             "yes_ask": entry.get("yes_ask"),
             "no_ask": entry.get("no_ask"),
+            "yes_is_over": entry.get("yes_is_over", True),
             "game_start": entry["game_start"],
             "event_title": entry["event_title"],
         })

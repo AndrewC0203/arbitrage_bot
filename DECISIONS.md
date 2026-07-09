@@ -61,3 +61,15 @@ Two deviations from the ghost-free-arbs design spec, both logged at implementati
 ## [2026-07-02] Eldridge pass-through fixture uses spec-consistent prices, not the literal logged prices
 
 Success criterion 1 says the "Bryce Eldridge 26s arb shape (Kalshi YES=0.45 + Poly NO=0.09)" must pass, but those literal prices carry a 41¢ gap — F3's 10¢ edge cap suppresses them by construction (and the live capture shows Poly yes_ask=0.75 with no_ask=0.09, i.e. a crossed book F4 would also kill; the 26s arb was itself likely a ghost). Chose the spec's constants over the literal fixture: the pass-through regression test keeps the Eldridge shape (two-sided, sane spreads, mids agreeing, Kalshi YES + Poly NO) at prices consistent with all four filters (total 0.9393, gap 2.07¢). If real fat-edge arbs turn out to exist, raise GHOST_MAX_GAP_CENTS — don't weaken the fixture.
+
+## [2026-07-09] New sport — chose WNBA spread/total over UFC because UFC has no Polymarket props
+
+Task: add a sport beyond baseball that is live on both venues with markets beyond moneyline. Surveyed every live Polymarket US league (2026-07-09): UFC is live on both venues but Poly carries only `ufc_fight_winner` (Kalshi has MOV/rounds/distance with no counterpart); golf/F1/NASCAR/boxing/NFL/Indy have league slugs but zero events; esports and cricket are match-winner-only. WNBA is the only sport with non-moneyline markets on both sides: Kalshi KXWNBASPREAD/KXWNBATOTAL vs Poly `basketball_team_full_game_spread`/`_total`. Kalshi's WNBA player props (KXWNBAPTS/REB/AST/3PT) have no Poly counterpart (verified via /v1/search phrasings + player names) so player props are out of scope until Poly lists them.
+
+## [2026-07-09] WNBA spread/total — coverage matching at unequal lines over exact-line complements because the venues' line grids never align
+
+Verified live: Kalshi totals strikes are 171.5+3k, Poly lines 170.5+3k (offset by 1, zero overlap); spreads 1.5/3.5/6.5/9.5 vs 1.5/4.5/7.5/10.5 (overlap only at 1.5). Exact matching would produce ~1 matchable market per game. Chose coverage pairs: Kalshi over(k) + Poly under(p) legal iff p ≥ k (and the mirror direction iff p ≤ k) — at least one leg always pays, both pay in the middle band. Only the tightest valid Poly line per direction is considered (it is also the cheapest, so nothing better exists). Rejected a third standalone pipeline (duplicates tracker/ghost/WS plumbing) in favor of extending the props pipeline with threshold-SMT branches; identity rides in the existing player_norm field. Spread matching is same-frame only in v1 (both venues list both teams' frames symmetrically, so cross-frame conversion adds no coverage today).
+
+## [2026-07-09] Stacked branch — claude/feat-wnba-spread-total based on claude/feat-duration-ms, not main
+
+The WNBA work extends match_props, the ghost filters, and the prop tracker — code rewritten by unmerged PR #18 (ML ghost gate) and touched by PR #19. Branching from main would rewrite pre-#18 code and guarantee conflicts. PR #20 is based on the PR #19 branch (stack: main ← #18 ← #19 ← #20), same precedent as 2026-07-01.
