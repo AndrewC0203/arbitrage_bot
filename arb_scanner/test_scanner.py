@@ -1648,17 +1648,28 @@ class TestThresholdCoverageMatching(unittest.TestCase):
         self.assertEqual(matches[0]["poly_line"], 185.5)
         self.assertEqual(matches[0]["leg1_ask"], 0.40)
 
-    def test_T05_equal_lines_allow_both_directions(self):
+    def test_T05_equal_lines_allow_either_direction(self):
         # p == k satisfies both coverage inequalities (pure complement case).
-        kp = _kp_threshold("KXWNBASPREAD", "KXWNBASPREAD-26JUL09INDPHX-PHX2",
-                           "spread:phx", "Phoenix", 1.5,
-                           yes_ask=0.44, no_ask=0.58)
-        pp = _pp_threshold(_SPREAD_SMT, "spread:phx", "Phoenix", 1.5,
-                           yes_ask=0.42, no_ask=0.60, yes_is_over=False)
-        matches = self._match([kp], [pp])
-        directions = {m["direction"] for m in matches}
-        self.assertEqual(directions,
-                         {"Kalshi YES + Poly NO", "Poly YES + Kalshi NO"})
+        # Both directions can never arb SIMULTANEOUSLY with sane books (the
+        # four asks sum to ~2.04 > 2*ARB_THRESHOLD), so each is priced in turn.
+        kp_a = _kp_threshold("KXWNBASPREAD", "KXWNBASPREAD-26JUL09INDPHX-PHX2",
+                             "spread:phx", "Phoenix", 1.5,
+                             yes_ask=0.40, no_ask=0.62)
+        pp_a = _pp_threshold(_SPREAD_SMT, "spread:phx", "Phoenix", 1.5,
+                             yes_ask=0.50, no_ask=0.52, yes_is_over=False)
+        matches = self._match([kp_a], [pp_a])
+        self.assertEqual([m["direction"] for m in matches],
+                         ["Kalshi YES + Poly NO"])
+        self.assertEqual(matches[0]["poly_line"], matches[0]["kalshi_line"])
+
+        kp_b = _kp_threshold("KXWNBASPREAD", "KXWNBASPREAD-26JUL09INDPHX-PHX2",
+                             "spread:phx", "Phoenix", 1.5,
+                             yes_ask=0.56, no_ask=0.52)
+        pp_b = _pp_threshold(_SPREAD_SMT, "spread:phx", "Phoenix", 1.5,
+                             yes_ask=0.62, no_ask=0.40, yes_is_over=False)
+        matches = self._match([kp_b], [pp_b])
+        self.assertEqual([m["direction"] for m in matches],
+                         ["Poly YES + Kalshi NO"])
 
     def test_T06_spread_frame_translation(self):
         # Poly market stores native long/short prices; yes_is_over=False means
@@ -1711,7 +1722,7 @@ class TestThresholdCoverageMatching(unittest.TestCase):
         pp_player = {
             "slug": "pts-slug", "smt": "basketball_player_points",
             "player_name": "Jane Doe", "player_norm": "jane doe", "line": 20,
-            "yes_ask": 0.42, "no_ask": 0.50,
+            "yes_ask": 0.55, "no_ask": 0.52,
             "game_start": "2026-07-09T23:00:00Z", "event_title": "IND @ PHX",
         }
         pp_thresh = _pp_threshold(_TOTAL_SMT, "total:ind-phx", "Indiana vs. Phoenix",
