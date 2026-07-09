@@ -75,6 +75,49 @@ def team_code(text: str) -> Optional[str]:
             return code
     return None
 
+# WNBA-priority aliases for the spread/total threshold pipeline. Checked BEFORE
+# the shared table so city names shared with the NBA resolve to the WNBA
+# franchise ("Golden State" → Valkyries, "New York" → Liberty). Includes the
+# raw Polymarket US abbreviations (lv/conn/gsv/wsh/ny/la/por/tor/…), which the
+# shared table does not resolve — rule 23: never join venues on raw strings.
+_WNBA_ALIASES: list[tuple[str, str]] = [
+    ("golden state valkyries", "lav"), ("golden state", "lav"), ("valkyries", "lav"), ("gsv", "lav"),
+    ("las vegas aces", "las"), ("las vegas", "las"), ("aces", "las"), ("lv", "las"),
+    ("connecticut sun", "con"), ("connecticut", "con"), ("conn", "con"),
+    ("new york liberty", "nyl"), ("new york", "nyl"), ("liberty", "nyl"), ("ny", "nyl"),
+    ("los angeles sparks", "la"), ("los angeles", "la"), ("sparks", "la"), ("la", "la"),
+    ("washington mystics", "was"), ("washington", "was"), ("mystics", "was"), ("wsh", "was"),
+    ("toronto tempo", "tor"), ("toronto", "tor"), ("tempo", "tor"), ("tor", "tor"),
+    ("portland fire", "por"), ("portland", "por"), ("por", "por"),
+    ("atlanta dream", "atl"), ("atlanta", "atl"), ("dream", "atl"), ("atl", "atl"),
+    ("chicago sky", "chi"), ("chicago", "chi"), ("sky", "chi"), ("chi", "chi"),
+    ("dallas wings", "dal"), ("dallas", "dal"), ("wings", "dal"), ("dal", "dal"),
+    ("indiana fever", "ind"), ("indiana", "ind"), ("fever", "ind"), ("ind", "ind"),
+    ("minnesota lynx", "min"), ("minnesota", "min"), ("lynx", "min"), ("min", "min"),
+    ("phoenix mercury", "phx"), ("phoenix", "phx"), ("mercury", "phx"), ("phx", "phx"),
+    ("seattle storm", "sea"), ("seattle", "sea"), ("storm", "sea"), ("sea", "sea"),
+]
+_WNBA_ALIASES_SORTED = sorted(_WNBA_ALIASES, key=lambda x: -len(x[0]))
+
+def wnba_team_code(text: str) -> Optional[str]:
+    t = normalize_name(text)
+    for alias, code in _WNBA_ALIASES_SORTED:
+        if alias in t:
+            return code
+    return team_code(text)
+
+def wnba_teams_from_kalshi_title(title: str) -> Optional[tuple[str, str]]:
+    clean = title.replace("@", " vs ")
+    normalized = normalize_name(clean)
+    for sep in [" vs ", " v ", " at "]:
+        parts = normalized.split(sep)
+        if len(parts) == 2:
+            a = wnba_team_code(parts[0])
+            b = wnba_team_code(parts[1])
+            if a and b:
+                return a, b
+    return None
+
 def teams_from_kalshi_title(title: str) -> Optional[tuple[str, str]]:
     clean = title.replace("@", " vs ")
     normalized = normalize_name(clean)
@@ -91,6 +134,16 @@ def _kalshi_game_dt_utc(ticker: str) -> Optional[datetime]:
     try:
         segment = ticker.split("-")[1]
         dt_naive = datetime.strptime(segment[:11], "%y%b%d%H%M")
+        return dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc)
+    except (IndexError, ValueError):
+        return None
+
+def _kalshi_game_date_only_utc(ticker: str) -> Optional[datetime]:
+    """WNBA game tickers carry a date but no HHMM (26JUL09INDPHX). Anchor at
+    midnight ET on game day; callers must treat the time as unknown."""
+    try:
+        segment = ticker.split("-")[1]
+        dt_naive = datetime.strptime(segment[:7], "%y%b%d")
         return dt_naive.replace(tzinfo=_ET).astimezone(timezone.utc)
     except (IndexError, ValueError):
         return None
