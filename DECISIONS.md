@@ -69,3 +69,7 @@ Task: add a sport beyond baseball that is live on both venues with markets beyon
 ## [2026-07-09] WNBA spread/total — coverage matching at unequal lines over exact-line complements because the venues' line grids never align
 
 Verified live: Kalshi totals strikes are 171.5+3k, Poly lines 170.5+3k (offset by 1, zero overlap); spreads 1.5/3.5/6.5/9.5 vs 1.5/4.5/7.5/10.5 (overlap only at 1.5). Exact matching would produce ~1 matchable market per game. Chose coverage pairs: Kalshi over(k) + Poly under(p) legal iff p ≥ k (and the mirror direction iff p ≤ k) — at least one leg always pays, both pay in the middle band. Only the tightest valid Poly line per direction is considered (it is also the cheapest, so nothing better exists). Rejected a third standalone pipeline (duplicates tracker/ghost/WS plumbing) in favor of extending the props pipeline with threshold-SMT branches; identity rides in the existing player_norm field. Spread matching is same-frame only in v1 (both venues list both teams' frames symmetrically, so cross-frame conversion adds no coverage today).
+
+## [2026-07-09] Stacked branch — claude/feat-wnba-spread-total based on claude/feat-duration-ms, not main
+
+The WNBA work extends match_props, the ghost filters, and the prop tracker — code rewritten by unmerged PR #18 (ML ghost gate) and touched by PR #19. Branching from main would rewrite pre-#18 code and guarantee conflicts. PR #20 is based on the PR #19 branch (stack: main ← #18 ← #19 ← #20), same precedent as 2026-07-01.
